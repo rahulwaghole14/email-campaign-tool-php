@@ -1,0 +1,8 @@
+{
+  "name": "rsl/email-automation",
+  "description": "Email automation and communication management",
+  "type": "project",
+  "require": {"php": "^8.2", "ext-pdo": "*", "phpmailer/phpmailer": "^6.9"},
+  "autoload": {"psr-4": {"App\\": "app/"}},
+  "scripts": {"test": "php tests/run.php"}
+}

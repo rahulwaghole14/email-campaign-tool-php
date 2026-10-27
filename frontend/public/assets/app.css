@@ -1,0 +1,2976 @@
+:root{font-family:Inter,Segoe UI,sans-serif;color:#213129;background:#f5f7f5;font-synthesis:none}*{box-sizing:border-box}body{margin:0}button,input,textarea{font:inherit}button,a{ -webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{opacity:.55;cursor:wait}[hidden]{display:none!important}aside{position:fixed;width:248px;inset:0 auto 0 0;background:#142e25;color:#e2eee7;padding:32px 22px;display:flex;flex-direction:column}.brand{display:flex;gap:12px;align-items:center;color:#fff;text-decoration:none;font-size:26px;font-weight:700}.brand>span{font-size:12px;letter-spacing:1.8px}.workspace{margin:42px 10px 24px;font-size:15px}.workspace small,.sidebar-foot small{display:block;font-size:10px;letter-spacing:1.5px;color:#9bb3a6;margin-top:10px}nav{display:grid;gap:8px}.nav{border:0;color:#b8cbc0;background:transparent;text-align:left;padding:14px;border-radius:7px;display:flex;gap:13px}.nav.active,.nav:hover{background:#29463a;color:#fff}.sidebar-foot{margin-top:auto;font-size:12px;padding:12px}main{margin-left:248px;padding:0 44px;max-width:1650px}header{height:82px;border-bottom:1px solid #dfe5df;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#718078}header b{margin:0 12px;font-weight:400;color:#a6b2aa}section{padding:42px 0}.eyebrow{font-size:10px;letter-spacing:2px;font-weight:700;color:#708477}h1{font-size:34px;letter-spacing:-1px;margin:12px 0}p{line-height:1.6}.muted{color:#758179;font-size:13px}.title-row{display:flex;justify-content:space-between;align-items:center;gap:20px}.primary{border:0;background:#285c43;color:white;padding:13px 20px;border-radius:6px;font-size:13px;font-weight:600}.primary:hover{background:#1d4934}.quiet{background:white;border:1px solid #dce4de;border-radius:6px;padding:9px 13px;color:#52665a;font-size:12px}.mode{border:1px solid #d4e2cf;background:#eef4e9;color:#506747;font-size:12px;padding:13px 17px;margin:22px 0;border-radius:6px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin:24px 0}.card{background:white;border:1px solid #e0e6df;border-radius:9px;padding:24px;box-shadow:0 3px 8px #21312903}.stats article>span{color:#69786e;font-size:12px}.stats strong{display:block;font-size:33px;margin:16px 0 10px;font-weight:600}.stats small{font-size:10px;color:#89958c}.section-title{display:flex;justify-content:space-between;align-items:center}h2{font-size:16px;margin:0 0 8px}.section-title p{margin:0 0 20px}.table-card{padding-bottom:8px}input,textarea{display:block;width:100%;border:1px solid #dbe2dc;border-radius:5px;padding:12px;background:#fff;color:#213129;outline:none;font-size:13px}input:focus,textarea:focus{border-color:#477b5c;box-shadow:0 0 0 3px #477b5c15}#search{max-width:330px;margin-bottom:15px}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:12px;text-align:left}th{font-size:9px;letter-spacing:1px;color:#8a968d;padding:15px 8px;background:#f8faf7}td{padding:18px 8px;border-bottom:1px solid #edf0eb}td small{display:block;color:#8a968d;margin-top:6px}.badge{display:inline-block;background:#f0f2ee;color:#6b766d;border-radius:5px;padding:5px 8px;font-size:10px;white-space:nowrap}.badge.sent{background:#e7f3e9;color:#367348}.badge.failed{background:#fceceb;color:#a34b46}.badge.pending{background:#fcf3de;color:#967528}.badge.dry_run{background:#eaf0fb;color:#536e9b}.activity-card{margin-top:22px}.activity-row{display:flex;justify-content:space-between;gap:20px;border-top:1px solid #edf0eb;padding:16px 0;font-size:12px}.activity-row small{color:#8a968d;white-space:nowrap}.empty{text-align:center;color:#8b978e;padding:36px}.compose-card{max-width:860px;margin-top:26px}label{display:block;font-size:12px;font-weight:600;margin-bottom:20px}label input,label textarea{margin-top:9px;font-weight:400}.columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}.form-footer{display:flex;align-items:center;justify-content:space-between;gap:15px}.integration-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:28px}.integration-grid h2{margin-top:20px}.integration-grid p{font-size:13px;color:#758179}.login-card{max-width:420px;margin-top:28px}#notice{padding:15px;margin-top:20px;border-radius:6px;background:#e3efe7;color:#27593e;font-size:13px}#notice.error{background:#fae9e6;color:#9a453c}footer{border-top:1px solid #e0e6df;display:flex;justify-content:space-between;padding:24px 0;font-size:10px;color:#8b978f}@media(max-width:1000px){aside{width:200px}main{margin-left:200px;padding:0 24px}.stats{grid-template-columns:1fr 1fr}}@media(max-width:650px){aside{position:static;width:auto;padding:18px}.brand{font-size:20px}.workspace,.sidebar-foot{display:none}nav{display:flex;margin-top:18px;flex-wrap:wrap}.nav{font-size:12px;padding:10px}main{margin-left:0;padding:0 18px}header{height:60px}.title-row{align-items:flex-start;flex-direction:column}h1{font-size:29px}.stats{gap:10px}.card{padding:18px}.columns,.integration-grid{grid-template-columns:1fr}.form-footer{align-items:flex-start;flex-direction:column}.activity-row{flex-direction:column;gap:8px}footer span{display:none}}
+.password-field{display:block;position:relative;margin-top:9px}.password-field input{margin-top:0;padding-right:46px}.password-toggle{position:absolute;right:7px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:32px;height:32px;padding:5px;border:0;border-radius:4px;background:transparent;color:#69786e}.password-toggle:hover{background:#edf3ee;color:#285c43}.password-toggle:focus-visible{outline:2px solid #477b5c;outline-offset:2px}.password-toggle svg{width:21px;height:21px}.password-toggle .eye-slash{display:none}.password-toggle.is-visible .eye-slash{display:block}
+/* Dashboard layout and interaction polish. */
+:root{font-family:-apple-system,BlinkMacSystemFont,"Google Sans","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;color:#202124;background:#f6f8f6}
+.icon{width:18px;height:18px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+aside{width:232px;padding:26px 20px}.brand{gap:10px}.brand>span{font-size:11px;letter-spacing:1.5px}.workspace{margin:28px 10px 22px}.workspace small{color:#b2c5b9}.nav{align-items:center;gap:12px;min-height:44px;padding:12px 14px;font-size:14px;font-weight:500}.sidebar-foot{font-size:11px;color:#c5d5cc;padding:10px}
+main{margin-left:232px;padding:0 36px;max-width:1600px}header{height:64px;font-size:13px;color:#5f6368}section{padding:28px 0}.eyebrow{font-size:11px;color:#5f6368;letter-spacing:1.5px;font-weight:700}h1{font-size:28px;line-height:1.25;margin:9px 0;font-weight:500;letter-spacing:-.3px}.muted{color:#5f6368;font-size:13px}.title-row p{margin:9px 0 0}.primary,.quiet{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px}.primary{padding:10px 18px;font-size:13px;font-weight:600}.quiet{font-size:13px}.quiet:hover{background:#f3f7f2;border-color:#b7c9bb}button:focus-visible,a:focus-visible{outline:2px solid #1a73e8;outline-offset:3px}
+.mode{display:flex;align-items:center;gap:10px;font-size:13px;padding:12px 16px;margin:20px 0 16px;color:#405e39}.mode .icon{width:18px;height:18px}.stats{gap:16px;margin:0 0 20px}.stats .card{padding:20px 22px}.stats article>span{font-size:13px;color:#5f6368;font-weight:500}.stats strong{font-size:32px;line-height:1;margin:13px 0 10px;font-variant-numeric:tabular-nums;font-weight:600}.stats small{font-size:12px;color:#5f6368;line-height:1.5}.card{padding:24px;border-radius:12px;border:1px solid #dadce0;box-shadow:0 1px 3px rgba(0,0,0,.05)}h2{font-size:17px;font-weight:600;margin-bottom:6px}.section-title p{font-size:13px;margin:0}.search-field{position:relative;width:340px;max-width:100%}.search-field>.icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#5f6368;width:18px;height:18px;pointer-events:none;z-index:1}.search-field input,#search,#inbox-search,#sent-search,#sheet-search{width:100%!important;max-width:none!important;margin:0!important;padding:10px 14px 10px 42px!important;font-size:13px!important;border-radius:20px!important;border:1px solid #dadce0!important;background:#fff!important;min-height:40px!important;outline:none!important;box-sizing:border-box!important}.search-field input:focus,#inbox-search:focus,#sent-search:focus,#sheet-search:focus{border-color:#1a73e8!important;box-shadow:0 0 0 2px rgba(26,115,232,.18)!important}input::placeholder,textarea::placeholder{color:#6e7d73;opacity:1}.table-card{padding-bottom:10px}table{font-size:13px}th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:#5f6368;padding:14px 12px;background:#f8fafd;border-bottom:1px solid #e0e6df}td{padding:16px 12px;font-size:13.5px}td small{color:#5f6368;font-size:12px}.badge{font-size:11.5px;padding:4px 10px;border-radius:12px}.empty{padding:30px 16px;color:#5f6368}.empty-icon{width:46px;height:46px;border-radius:14px;background:#edf3ed;display:grid;place-items:center;margin:0 auto 12px;color:#587560}.empty-icon .icon{width:24px;height:24px}.empty h3{font-size:15px;margin:0 0 6px;font-weight:600;color:#354b3e}.empty p{font-size:13px;margin:0 0 14px;color:#5f6368}.empty .quiet{min-height:36px;padding:8px 16px}.activity-card{margin-top:20px;padding:22px 24px}.activity-empty{font-size:13px;color:#5f6368;margin:9px 0 0;line-height:1.6}.activity-row{font-size:13px;padding:14px 0}.activity-row small{color:#5f6368;font-size:12px}footer{padding:20px 0;font-size:12px;color:#5f6368}.integration-grid p{color:#5f6368}
+@media(min-width:1600px){main{max-width:none;padding-left:40px;padding-right:40px}}
+@media(max-width:1000px){aside{width:200px}main{margin-left:200px;padding:0 24px}.stats{grid-template-columns:1fr 1fr}}
+@media(max-width:650px){aside{width:auto;padding:18px;position:static}.brand>span{font-size:11px}.nav{font-size:12px;padding:10px;gap:8px}.nav .icon{width:16px;height:16px}main{margin-left:0;padding:0 18px}header{height:58px}section{padding:24px 0}h1{font-size:27px}.title-row{gap:16px}.title-row>.primary{align-self:flex-start}.stats{gap:10px}.stats .card{padding:16px 14px}.stats small{font-size:10px}.card{padding:18px}.queue-toolbar{gap:10px}.search-field{width:auto;flex:1;min-width:0}.quiet{padding:9px 11px}.table-wrap{margin:0 -6px}th,td{padding-left:8px;padding-right:8px}.activity-card{padding:18px}.mode{align-items:flex-start;line-height:1.5}.mode .icon{margin-top:1px}.empty{padding:24px 10px}.sidebar-foot,.workspace{display:none}}
+@media(prefers-reduced-motion:no-preference){button{transition:background-color .15s,border-color .15s,box-shadow .15s}}
+/* Keep queue controls grouped and close to the results. */
+.queue-toolbar{justify-content:flex-start;gap:12px;margin:16px 0 12px}
+@media(max-width:650px){.queue-toolbar{gap:10px}.queue-toolbar .search-field{flex:1}}
+/* Heading and queue tools share a single desktop row. */
+.queue-header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:16px;flex-wrap:wrap}
+.queue-header .section-title{flex-shrink:0}
+.queue-header .queue-toolbar{display:flex!important;align-items:center!important;flex-direction:row!important;flex-wrap:nowrap!important;gap:12px!important;margin:0!important}
+@media(max-width:900px){.queue-header .queue-toolbar{flex-wrap:wrap!important;width:100%}.queue-header .search-field{flex:1;width:auto}}
+/* Compact composer with optional recipient fields and a visible action bar. */
+.compose-heading>p{margin:8px 0 0}.compose-card{max-width:none;margin-top:18px;padding:0;overflow:visible}.compose-fields{padding:20px 22px 16px}.compose-card label{margin-bottom:0;font-size:12px}.recipient-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;min-height:26px}.field-hint{font-size:10px;font-weight:400;color:#6c7b71;margin-left:7px}.recipient-options{display:flex;gap:6px}.recipient-toggle{border:1px solid #dce4de;border-radius:5px;color:#52665a;background:#fff;font-size:11px;font-weight:600;padding:4px 10px;min-height:28px}.recipient-toggle:hover,.recipient-toggle[aria-expanded="true"]{background:#eaf2eb;border-color:#aec5b4;color:#285c43}.compose-card input{padding:10px 12px;min-height:40px}.optional-recipients{display:flex;gap:16px;flex-wrap:wrap}.optional-recipients>label{flex:1 1 240px;margin-top:14px}.compose-card .subject-field,.compose-card .message-field{margin-top:16px}.compose-card label input,.compose-card label textarea{margin-top:7px}.compose-card textarea{min-height:150px;height:clamp(150px,22vh,240px);resize:vertical;line-height:1.6;padding:12px}.compose-hint{display:flex;align-items:center;gap:7px;margin:9px 0 0;font-size:11px;color:#65766a}.compose-hint .icon{width:14px;height:14px}.compose-actions{position:sticky;bottom:0;z-index:2;padding:14px 22px;background:#fff;border-top:1px solid #e3e9e2;border-radius:0 0 10px 10px;box-shadow:0 -4px 12px #21312904;gap:16px}.compose-action-copy{display:flex;flex-direction:column;gap:4px}.compose-action-copy>.muted{font-size:11px}.compose-mode{font-size:12px;color:#47643f;font-weight:600;display:flex;align-items:center;gap:7px}.compose-mode::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}.compose-mode.is-live{color:#996519}.compose-actions>.primary{flex-shrink:0}
+@media(max-width:650px){.compose-fields{padding:16px}.compose-actions{padding:12px 16px;flex-direction:row;align-items:center;flex-wrap:wrap}.compose-action-copy{flex:1 1 190px}.compose-actions>.primary{flex:1 1 130px}.compose-card textarea{height:180px}.compose-hint{align-items:flex-start;line-height:1.5}.optional-recipients{gap:0}.optional-recipients>label{flex-basis:100%}}
+/* Google Sheets sources, mapping, and record editing. */
+.sheet-add,.sheet-list,.sheet-preview{margin-top:20px}.sheet-link-row{display:flex;gap:14px;align-items:flex-end}.sheet-link-row label{flex:1;margin-bottom:0}.sheet-link-row button{margin-bottom:1px}.sheet-add .columns{margin-top:20px}.sheet-add select,select{display:block;width:100%;padding:11px;border:1px solid #dbe2dc;background:#fff;color:#213129;border-radius:5px;font:inherit;font-size:13px;margin-top:8px}.mapping-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}.mapping-grid label{margin-bottom:0}.sheet-add #save-source{margin-top:20px}.source-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:15px 0;border-top:1px solid #edf0eb}.source-row strong{font-size:13px}.source-row small{display:block;font-size:11px;color:#65766a;margin-top:5px}.sheet-controls{display:flex;gap:8px;flex-wrap:wrap}.sheet-controls a{text-decoration:none}.sheet-preview table{min-width:750px}.sheet-preview td{max-width:250px;overflow-wrap:anywhere}.sheet-row-actions{min-width:180px}.sheet-row-actions button{margin:3px}.sheet-issue{color:#984d35!important}.sheet-pagination{display:flex;justify-content:flex-end;align-items:center;gap:14px;margin-top:15px;font-size:12px}.sheet-preview .muted{font-size:12px}#sheet-editor{width:min(640px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:1px solid #dce4de;border-radius:12px;padding:24px;color:#213129}#sheet-editor::backdrop{background:#142e2566}#sheet-editor .queue-header{margin-bottom:12px}#sheet-editor .muted{font-size:12px}#edit-fields label{margin:16px 0}#edit-fields input:disabled{background:#f1f4f0}#edit-error{padding:12px;background:#fae9e6;color:#9a453c;border-radius:5px;font-size:12px}#google-disconnect{margin-left:auto}button:disabled{cursor:not-allowed}
+@media(max-width:800px){.mapping-grid{grid-template-columns:1fr 1fr}.sheet-link-row{align-items:stretch;flex-direction:column}}
+@media(max-width:500px){.mapping-grid{grid-template-columns:1fr}.source-row{align-items:flex-start}.sheet-controls{gap:6px}#sheet-editor{padding:18px}.sheet-pagination{justify-content:center}}
+.sheet-upload,.sheet-mapping{margin-top:20px}.sheet-upload input[type="file"]{background:#f8faf7;padding:10px;font-size:12px}.sheet-upload input::file-selector-button{border:1px solid #cddbd0;background:white;padding:6px 10px;border-radius:4px;margin-right:10px;color:#285c43;font:inherit}.sheet-mapping .columns{margin-top:18px}.sheet-mapping #save-source{margin-top:20px}.sheet-upload>p{margin-bottom:0;font-size:12px}
+/* Paginated mail history and individual message inspection. */
+.pagination-bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px;padding:12px 0;font-size:12px;color:#5c6f62}.pagination-bar>label{display:flex;align-items:center;gap:8px;margin:0;font-size:11px;font-weight:400}.pagination-bar select{width:auto;margin:0;padding:7px 26px 7px 9px}.pagination-buttons{display:flex;align-items:center;gap:12px;margin-left:auto}.queue-toolbar #email-status{width:auto;max-width:150px;margin:0;min-height:38px;padding:9px;font-size:12px}.email-actions{min-width:120px}.email-actions button{margin:3px}.sheet-search-toolbar{display:flex;gap:12px;margin:16px 0}.sheet-search-toolbar input{max-width:400px}.sheet-search-toolbar select{width:auto;margin:0}.sheet-pagination #sheet-range{margin-right:auto}.sheet-pagination{justify-content:flex-start}#email-detail{width:min(800px,calc(100vw - 32px));max-height:86vh;padding:24px;border:1px solid #dce4de;border-radius:12px;color:#213129}#email-detail::backdrop{background:#142e2570}#email-detail h3{font-size:15px;margin:22px 0 12px;overflow-wrap:anywhere}.email-metadata{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px 16px;font-size:12px;margin:18px 0}.email-metadata dt{color:#65766a}.email-metadata dd{margin:0;overflow-wrap:anywhere}.email-message{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8f5;border:1px solid #e0e6df;border-radius:7px;padding:16px;font:13px/1.7 "Segoe UI",Arial,sans-serif}.email-timeline{padding-left:20px;font-size:12px}.email-timeline li{padding:8px 0}.email-timeline time{display:block;color:#65766a;font-size:11px;margin-bottom:4px}.email-detail-error{padding:12px;background:#fae9e6;color:#9a453c;border-radius:5px;font-size:12px}@media(max-width:650px){.pagination-bar{gap:12px}.pagination-buttons{margin-left:0;width:100%;justify-content:space-between}.sheet-search-toolbar{flex-wrap:wrap}.sheet-search-toolbar input{max-width:none}.queue-toolbar #email-status{max-width:130px}#email-detail{padding:18px}.email-metadata{grid-template-columns:80px minmax(0,1fr);gap:10px}.sheet-pagination #sheet-range{margin-right:0}}
+/* Gmail-inspired Inbox & Email Reader styling */
+.badge-count{display:inline-flex;align-items:center;justify-content:center;background:#1a73e8;color:#fff;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;margin-left:auto;min-width:18px;height:18px;line-height:1}
+.nav.active .badge-count{background:#fff;color:#142e25}
+
+/* Inbox Table - Gmail Style (Strict No-Overflow) */
+#inbox .table-wrap{overflow-x:hidden!important}
+#inbox table{table-layout:fixed!important;width:100%!important}
+#inbox th,#inbox td{overflow:hidden;box-sizing:border-box}
+
+#inbox-rows tr{cursor:pointer;transition:background .15s ease,box-shadow .15s ease}
+#inbox-rows tr:hover{background:#f2f6fc!important;box-shadow:inset 3px 0 0 #1a73e8}
+.inbox-row-unread{background:#fff}
+.inbox-row-unread td{border-bottom-color:#e0e6df;background:rgba(232,240,254,0.35)}
+.inbox-row-unread strong{color:#1f1f1f;font-weight:700}
+.inbox-row-unread .inbox-subject-text{color:#1f1f1f;font-weight:700}
+
+.inbox-sender-cell{display:flex;align-items:center;gap:12px;min-width:0;overflow:hidden}
+.inbox-avatar{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;text-transform:uppercase;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.inbox-sender-info{min-width:0;overflow:hidden;flex:1}
+.inbox-sender-name{display:block;font-size:14px;color:#202124;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inbox-sender-email{display:block;font-size:12px;color:#5f6368;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.inbox-preview-wrap{display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.inbox-subject-text{font-size:13.5px;color:#202124}
+.inbox-snippet-separator{color:#80868b;font-size:13px;user-select:none;margin:0 4px}
+.inbox-snippet-text{color:#5f6368;font-size:13px}
+.inbox-date-cell{white-space:nowrap;color:#5f6368;font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.inbox-actions{white-space:nowrap!important;text-align:right!important;padding-right:18px!important}
+.inbox-actions button{margin:0 4px!important;padding:6px 14px!important;font-size:12px!important;font-weight:500!important;border-radius:16px!important;border:1px solid #dadce0!important;background:#fff!important;color:#444746!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;cursor:pointer!important}
+.inbox-actions button:hover{background:#e8f0fe!important;color:#1a73e8!important;border-color:#1a73e8!important}
+.inbox-last-sync{margin-left:auto;font-size:11px;color:#5f7566}
+
+/* Gmail-style Detail Dialog */
+#inbox-detail{width:min(980px,calc(100vw - 32px));max-height:92vh;padding:0;border:1px solid #dadce0;border-radius:16px;color:#202124;background:#fff;box-shadow:0 12px 36px rgba(0,0,0,.15);overflow:hidden}
+#inbox-detail[open]{display:flex;flex-direction:column}
+#inbox-detail::backdrop{background:rgba(32,33,36,.55);backdrop-filter:blur(2px)}
+
+.gmail-detail-toolbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #f1f3f4;background:#fafbfc}
+.gmail-toolbar-left{display:flex;align-items:center;gap:8px}
+.gmail-toolbar-right{display:flex;align-items:center;gap:8px}
+.gmail-tool-btn{background:transparent;border:0;color:#444746;padding:7px 14px;border-radius:18px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:all .15s ease}
+.gmail-tool-btn:hover{background:#f1f3f4;color:#1f1f1f}
+.gmail-tool-btn.primary{background:#1a73e8;color:#fff}
+.gmail-tool-btn.primary:hover{background:#1557b0}
+.gmail-tool-btn.icon-only{padding:7px;border-radius:50%;width:34px;height:34px;justify-content:center}
+
+.gmail-detail-scroll{padding:24px 28px;overflow-y:auto;flex:1}
+
+.gmail-subject-row{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px}
+.gmail-subject-title{font-size:20px;font-weight:500;color:#1f1f1f;line-height:1.35;margin:0;flex:1;word-break:break-word}
+.gmail-label-pill{background:#e8f0fe;color:#1a73e8;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;white-space:nowrap;margin-top:3px}
+
+.gmail-sender-card{display:flex;align-items:flex-start;gap:14px;padding:12px 0 18px;border-bottom:1px solid #f1f3f4;margin-bottom:18px}
+.gmail-avatar-large{width:42px;height:42px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;flex-shrink:0;text-transform:uppercase;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.gmail-sender-meta{flex:1;min-width:0}
+.gmail-sender-line1{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.gmail-sender-display{font-size:14px;font-weight:600;color:#1f1f1f}
+.gmail-sender-address{font-size:12px;color:#5f6368}
+.gmail-sender-line2{display:flex;align-items:center;gap:6px;font-size:12px;color:#5f6368}
+.gmail-to-pill{background:#f1f3f4;color:#444746;padding:2px 8px;border-radius:10px;font-size:11px}
+.gmail-sender-date{font-size:12px;color:#5f6368;white-space:nowrap;text-align:right}
+
+.gmail-content-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.inbox-view-toggle{display:inline-flex;gap:4px;background:#f1f3f4;padding:3px;border-radius:20px}
+.view-toggle-btn{background:transparent;border:0;padding:5px 14px;font-size:12px;font-weight:600;color:#5f6368;border-radius:16px;cursor:pointer;transition:all .15s ease}
+.view-toggle-btn.active{background:#fff;color:#1a73e8;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.email-html-frame{width:100%;min-height:300px;border:0;border-radius:0;background:#fff;display:block;overflow:hidden}
+
+.gmail-plain-body{background:#fafbfc;border:1px solid #e0e3e7;border-radius:10px;padding:20px;font:13px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1f1f1f;white-space:pre-wrap;word-break:break-word}
+.gmail-plain-body .email-link{color:#1a73e8;text-decoration:none;word-break:break-all}
+.gmail-plain-body .email-link:hover{text-decoration:underline}
+
+/* Gmail Bottom Quick Actions */
+.gmail-quick-reply-bar{display:flex;gap:12px;margin-top:24px;padding-top:18px;border-top:1px solid #f1f3f4}
+.gmail-reply-chip{border:1px solid #dadce0;background:#fff;border-radius:20px;padding:8px 22px;font-size:13px;font-weight:600;color:#1f1f1f;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:all .15s ease}
+.gmail-reply-chip:hover{background:#f8fafd;border-color:#1a73e8;color:#1a73e8;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.login-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px}
+#reset-dialog{width:min(460px,calc(100vw - 32px));border:1px solid #dce4de;border-radius:12px;padding:24px;color:#213129}
+#reset-dialog::backdrop{background:#142e2570}
+.badge.not_queued{background:#edf2ee;color:#55695c}
+.badge.ready{background:#e7f5eb;color:#24663b;font-weight:600}
+.badge.issue{background:#fdeeee;color:#a8322a;font-weight:600;display:inline-block;margin:3px 3px 0 0;padding:2px 6px;border-radius:4px;font-size:10px}
+.batch-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  background: #e6f4ea !important;
+  border: 1px solid #ceead6 !important;
+  padding: 10px 18px !important;
+  border-radius: 20px !important;
+  margin: 14px 0 !important;
+  font-size: 13px !important;
+  color: #137333 !important;
+  font-weight: 500 !important;
+}
+
+.batch-toolbar[hidden] {
+  display: none !important;
+}
+
+.batch-info-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+.batch-link {
+  border: none !important;
+  background: transparent !important;
+  color: #188038 !important;
+  text-decoration: underline !important;
+  font-size: 12px !important;
+  cursor: pointer !important;
+  padding: 2px 8px !important;
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+}
+
+.batch-link:hover {
+  background: #ceead6 !important;
+  color: #0d652d !important;
+}
+
+#batch-send-btn, #sheet-bulk-send-btn {
+  background: #1e4632 !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 20px !important;
+  padding: 7px 18px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
+  transition: all 0.15s ease !important;
+}
+
+#batch-send-btn:hover, #sheet-bulk-send-btn:hover {
+  background: #143323 !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
+}
+
+#batch-send-btn .icon, #sheet-bulk-send-btn .icon {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.sheet-sync-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#356345;background:#ebf5ee;padding:4px 10px;border-radius:12px;font-weight:500;border:1px solid #d2e6d6}
+.sheet-sync-pill svg{width:13px;height:13px}
+.sheet-checkbox{cursor:pointer;width:15px;height:15px;margin:0;accent-color:#285c43}
+.sheet-setup-collapsible{transition:all .2s ease}
+.sheet-setup-collapsible.collapsed{display:none}
+.sheet-workspace-header{display:flex;align-items:center;gap:18px;margin-bottom:18px;flex-wrap:wrap}
+.sheet-workspace-title-wrap{flex:1;min-width:240px}
+.sheet-workspace-title{font-size:22px;margin:0 0 4px;letter-spacing:-.5px}
+#sheet-back-btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;padding:8px 14px;border-radius:18px}
+#sheet-back-btn .icon{width:16px;height:16px}
+.sheets-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
+@media(max-width:900px){.sheets-grid{grid-template-columns:1fr}}
+.sheet-filter-tabs{display:flex;gap:8px;margin:16px 0 12px;border-bottom:1px solid #dce4de;padding-bottom:8px;flex-wrap:wrap}
+.sheet-tab-btn{background:transparent;border:0;padding:8px 14px;font-size:13px;font-weight:500;color:#556b5c;border-radius:6px;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.sheet-tab-btn:hover{background:#eef3ee;color:#1a3c2e}
+.sheet-tab-btn.active{background:#285c43;color:#fff;font-weight:600}
+.tab-count{font-size:11px;padding:2px 7px;border-radius:10px;background:#e2ece4;color:#285c43;font-weight:700}
+.sheet-tab-btn.active .tab-count{background:rgba(255,255,255,.25);color:#fff}
+#reset-dialog label{margin:14px 0}
+
+/* Unified Google Workspace Toolbar Controls (Search, Filter Select, Refresh Button) */
+.queue-header .queue-toolbar {
+  display: inline-flex !important;
+  align-items: center !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 10px !important;
+  margin: 0 !important;
+}
+
+.queue-toolbar .search-field {
+  position: relative !important;
+  width: 280px !important;
+  min-width: 220px !important;
+  flex-shrink: 1 !important;
+  margin: 0 !important;
+}
+
+.queue-toolbar .search-field input,
+#inbox-search,
+#search,
+#sent-search {
+  width: 100% !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  border-radius: 20px !important;
+  border: 1px solid #dadce0 !important;
+  background-color: #f1f3f4 !important;
+  color: #202124 !important;
+  font-size: 13.5px !important;
+  padding: 0 16px 0 42px !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease !important;
+}
+
+.queue-toolbar .search-field input:focus,
+#inbox-search:focus,
+#search:focus,
+#sent-search:focus {
+  background-color: #fff !important;
+  border-color: #1a73e8 !important;
+  box-shadow: 0 1px 3px rgba(60,64,67,0.12), 0 4px 8px rgba(60,64,67,0.1) !important;
+}
+
+.queue-toolbar .search-field input::placeholder,
+#inbox-search::placeholder,
+#search::placeholder,
+#sent-search::placeholder {
+  color: #5f6368 !important;
+  font-size: 13px !important;
+  opacity: 1 !important;
+}
+
+/* Gmail Pill Select Dropdown */
+.queue-toolbar select,
+#inbox-filter,
+#email-status {
+  width: auto !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  border-radius: 20px !important;
+  border: 1px solid #dadce0 !important;
+  background-color: #fff !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235f6368' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 14px center !important;
+  background-size: 14px !important;
+  padding: 0 34px 0 16px !important;
+  margin: 0 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #3c4043 !important;
+  cursor: pointer !important;
+  outline: none !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  box-sizing: border-box !important;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease !important;
+}
+
+.queue-toolbar select:hover,
+#inbox-filter:hover,
+#email-status:hover {
+  background-color: #f8fafd !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+}
+
+.queue-toolbar select:focus,
+#inbox-filter:focus,
+#email-status:focus {
+  border-color: #1a73e8 !important;
+  box-shadow: 0 0 0 2px rgba(26,115,232,0.18) !important;
+}
+
+/* Gmail Pill Buttons (Refresh) */
+.queue-toolbar button,
+.queue-toolbar .quiet,
+#inbox-refresh,
+#refresh,
+#sent-refresh {
+  height: 40px !important;
+  min-height: 40px !important;
+  border-radius: 20px !important;
+  border: 1px solid #dadce0 !important;
+  background: #fff !important;
+  color: #3c4043 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  padding: 0 18px !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  cursor: pointer !important;
+  box-sizing: border-box !important;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease !important;
+}
+
+.queue-toolbar button .icon,
+.queue-toolbar .quiet .icon,
+#inbox-refresh .icon,
+#refresh .icon,
+#sent-refresh .icon {
+  width: 16px !important;
+  height: 16px !important;
+  color: #5f6368 !important;
+  transition: color .15s ease !important;
+}
+
+.queue-toolbar button:hover,
+.queue-toolbar .quiet:hover,
+#inbox-refresh:hover,
+#refresh:hover,
+#sent-refresh:hover {
+  background: #f8fafd !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+}
+
+.queue-toolbar button:hover .icon,
+.queue-toolbar .quiet:hover .icon,
+#inbox-refresh:hover .icon,
+#refresh:hover .icon,
+#sent-refresh:hover .icon {
+  color: #1a73e8 !important;
+}
+
+/* Polished Pagination Controls */
+.pagination-bar select {
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 16px !important;
+  border: 1px solid #dadce0 !important;
+  background-color: #fff !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235f6368' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  background-size: 12px !important;
+  padding: 0 28px 0 12px !important;
+  margin: 0 !important;
+  font-size: 12px !important;
+  color: #3c4043 !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  cursor: pointer !important;
+  outline: none !important;
+}
+
+.pagination-bar select:hover {
+  border-color: #1a73e8 !important;
+  background-color: #f8fafd !important;
+}
+
+.pagination-buttons button,
+.pagination-bar button {
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 16px !important;
+  padding: 0 14px !important;
+  font-size: 12px !important;
+  border: 1px solid #dadce0 !important;
+  background: #fff !important;
+  color: #3c4043 !important;
+}
+
+.pagination-buttons button:hover:not(:disabled),
+.pagination-bar button:hover:not(:disabled) {
+  border-color: #1a73e8 !important;
+  background: #f8fafd !important;
+  color: #1a73e8 !important;
+}
+
+/* Header & Top Bar Polish */
+header #logout {
+  height: 36px !important;
+  min-height: 36px !important;
+  border-radius: 18px !important;
+  padding: 0 16px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  border: 1px solid #dadce0 !important;
+  background: #fff !important;
+  color: #3c4043 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  transition: all .15s ease !important;
+}
+
+header #logout:hover {
+  background: #f8fafd !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+}
+
+.inbox-heading {
+  font-size: 28px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.3px !important;
+  margin: 0 0 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.inbox-heading-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  border-radius: 14px !important;
+  padding: 2px 10px !important;
+  min-width: 24px !important;
+  height: 22px !important;
+  line-height: 1 !important;
+  vertical-align: middle !important;
+}
+
+.inbox-subheading {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  font-size: 13px !important;
+  flex-wrap: wrap !important;
+}
+
+.inbox-account-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  background: #edf4ed !important;
+  color: #245738 !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 3px 10px !important;
+  border-radius: 12px !important;
+  border: 1px solid #d4e5d6 !important;
+}
+
+.status-indicator-dot {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  background-color: #34a853 !important;
+  display: inline-block !important;
+  box-shadow: 0 0 0 2px rgba(52,168,83,0.2) !important;
+}
+
+.inbox-last-sync-label {
+  font-size: 12px !important;
+  color: #5f6368 !important;
+}
+
+.inbox-sync-btn {
+  height: 40px !important;
+  min-height: 40px !important;
+  border-radius: 20px !important;
+  padding: 0 20px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  border: 0 !important;
+  background: #1e4632 !important;
+  color: #fff !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
+  transition: all .15s ease !important;
+}
+
+.inbox-sync-btn:hover {
+  background: #143323 !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
+}
+
+.inbox-sync-btn .sync-icon {
+  width: 17px !important;
+  height: 17px !important;
+  transition: transform .3s ease !important;
+}
+
+.inbox-sync-btn.is-syncing {
+  opacity: 0.85 !important;
+  cursor: wait !important;
+}
+
+.inbox-sync-btn.is-syncing .sync-icon {
+  animation: spin 1s linear infinite !important;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Gmail-Style Compose Polish */
+.compose-heading {
+  max-width: 920px !important;
+  margin: 0 auto 14px !important;
+}
+
+.compose-heading h1 {
+  font-size: 28px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.3px !important;
+  margin: 0 0 6px !important;
+}
+
+.compose-subheading {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin: 0 0 16px !important;
+  font-size: 13px !important;
+}
+
+.compose-card {
+  max-width: 920px !important;
+  margin: 0 auto 30px !important;
+  background: #fff !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.04) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.compose-fields {
+  padding: 0 !important;
+}
+
+.compose-row {
+  display: flex !important;
+  align-items: center !important;
+  padding: 10px 20px !important;
+  border-bottom: 1px solid #f1f3f4 !important;
+  background: #fff !important;
+  gap: 12px !important;
+  transition: background-color .15s ease !important;
+}
+
+.compose-row[hidden] {
+  display: none !important;
+}
+
+.compose-row:focus-within {
+  background: #fafbfc !important;
+}
+
+.compose-label {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #5f6368 !important;
+  width: 32px !important;
+  flex-shrink: 0 !important;
+  user-select: none !important;
+}
+
+.compose-input {
+  flex: 1 !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 6px 0 !important;
+  font-size: 14px !important;
+  color: #202124 !important;
+  outline: none !important;
+  min-height: auto !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+
+.compose-input:focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.compose-input::placeholder {
+  color: #80868b !important;
+  font-size: 13.5px !important;
+}
+
+.recipient-options {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin-left: auto !important;
+}
+
+.recipient-toggle {
+  background: transparent !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 14px !important;
+  color: #5f6368 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 3px 10px !important;
+  min-height: 24px !important;
+  cursor: pointer !important;
+  transition: all .15s ease !important;
+}
+
+.recipient-toggle:hover {
+  background: #f1f3f4 !important;
+  color: #202124 !important;
+  border-color: #bdc1c6 !important;
+}
+
+.recipient-toggle[aria-expanded="true"] {
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+  border-color: #1a73e8 !important;
+}
+
+.compose-subject-input {
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  padding: 8px 0 !important;
+}
+
+.compose-body-row {
+  padding: 16px 20px 20px !important;
+  background: #fff !important;
+}
+
+.compose-textarea {
+  width: 100% !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  font-size: 14px !important;
+  line-height: 1.65 !important;
+  color: #202124 !important;
+  outline: none !important;
+  font-family: inherit !important;
+  resize: vertical !important;
+  min-height: 260px !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+
+.compose-textarea:focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.compose-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 14px 22px !important;
+  background: #fafbfc !important;
+  border-top: 1px solid #f1f3f4 !important;
+  box-shadow: none !important;
+}
+
+.compose-action-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+}
+
+#compose-mode {
+  display: none !important;
+}
+
+.compose-send-btn {
+  height: 40px !important;
+  min-height: 40px !important;
+  border-radius: 20px !important;
+  padding: 0 24px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  background: #1e4632 !important;
+  color: #fff !important;
+  border: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
+  transition: all .15s ease !important;
+}
+
+.compose-send-btn:hover {
+  background: #143323 !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.18) !important;
+}
+
+.compose-send-btn .icon {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.compose-discard-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  border: none !important;
+  background: transparent !important;
+  color: #5f6368 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all .15s ease !important;
+}
+
+.compose-discard-btn:hover {
+  background: #f1f3f4 !important;
+  color: #c5221f !important;
+}
+
+.compose-discard-btn .icon {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Compose Attachments & Tools */
+.compose-tool-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #444746 !important;
+  cursor: pointer !important;
+  transition: all .15s ease !important;
+  border: none !important;
+  background: transparent !important;
+  user-select: none !important;
+}
+
+.compose-tool-btn:hover {
+  background: #f1f3f4 !important;
+  color: #1a73e8 !important;
+}
+
+.compose-tool-btn .icon {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.compose-upload-status {
+  font-size: 12px !important;
+  color: #1a73e8 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-weight: 500 !important;
+}
+
+.compose-attachments {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  padding: 10px 22px 14px 22px !important;
+  border-top: 1px dashed #e8eaed !important;
+  background: #fafbfc !important;
+}
+
+.compose-attachments[hidden] {
+  display: none !important;
+}
+
+.attachment-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 12px !important;
+  background: #ffffff !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 18px !important;
+  font-size: 12.5px !important;
+  color: #3c4043 !important;
+  box-shadow: 0 1px 2px rgba(60,64,67,0.06) !important;
+  transition: all .15s ease !important;
+  max-width: 340px !important;
+}
+
+.attachment-chip:hover {
+  background: #f8f9fa !important;
+  border-color: #c6c9cc !important;
+}
+
+.attachment-chip .icon {
+  width: 16px !important;
+  height: 16px !important;
+  color: #1a73e8 !important;
+  flex-shrink: 0 !important;
+}
+
+.attachment-chip .attachment-name {
+  font-weight: 500 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  color: #202124 !important;
+}
+
+.attachment-chip .attachment-size {
+  color: #70757a !important;
+  font-size: 11px !important;
+  flex-shrink: 0 !important;
+}
+
+.attachment-chip .attachment-remove-btn {
+  border: none !important;
+  background: transparent !important;
+  color: #70757a !important;
+  cursor: pointer !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  padding: 2px 4px !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all .15s ease !important;
+  margin-left: 2px !important;
+}
+
+.attachment-chip .attachment-remove-btn:hover {
+  background: #fce8e6 !important;
+  color: #d93025 !important;
+}
+
+/* Detail modal attachments */
+.email-attachments-list {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin: 12px 0 !important;
+}
+
+/* Sheets Directory Modern Redesign */
+.sheets-header-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.google-status-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background: #e6f4ea !important;
+  color: #137333 !important;
+  padding: 6px 14px !important;
+  border-radius: 20px !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  border: 1px solid #ceead6 !important;
+}
+
+.status-dot {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+  background: #188038 !important;
+  flex-shrink: 0 !important;
+}
+
+.google-disconnect-link {
+  border: none !important;
+  background: transparent !important;
+  color: #5f6368 !important;
+  text-decoration: underline !important;
+  font-size: 11.5px !important;
+  cursor: pointer !important;
+  padding: 0 0 0 6px !important;
+  margin-left: 4px !important;
+  border-left: 1px solid #ceead6 !important;
+  line-height: 1 !important;
+}
+
+.google-disconnect-link:hover {
+  color: #d93025 !important;
+}
+
+/* Saved Sheets List */
+.sheet-sources-list {
+  display: flex !important;
+  flex-direction: column !important;
+  margin-top: 14px !important;
+}
+
+.sheet-source-card {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 16px 20px !important;
+  border-bottom: 1px solid #f1f3f4 !important;
+  transition: background-color 0.15s ease !important;
+  gap: 16px !important;
+}
+
+.sheet-source-card:last-child {
+  border-bottom: none !important;
+}
+
+.sheet-source-card:hover {
+  background: #f8fafd !important;
+}
+
+.sheet-source-main {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.source-icon-badge {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+.source-icon-badge.google {
+  background: #e6f4ea !important;
+}
+
+.source-icon-badge.excel {
+  background: #e8f5e9 !important;
+}
+
+.source-icon-badge svg {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+.sheet-source-info {
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.sheet-source-title-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex-wrap: wrap !important;
+  margin-bottom: 4px !important;
+}
+
+.sheet-source-title {
+  font-size: 14.5px !important;
+  font-weight: 600 !important;
+  color: #202124 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.badge-google {
+  background: #e6f4ea !important;
+  color: #137333 !important;
+  border: 1px solid #ceead6 !important;
+  font-size: 11px !important;
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  font-weight: 500 !important;
+}
+
+.sheet-source-meta {
+  font-size: 12px !important;
+  color: #5f6368 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.meta-dot {
+  color: #dadce0 !important;
+}
+
+.sheet-source-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.sheet-open-btn {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 16px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  border-radius: 18px !important;
+  background: #1e4632 !important;
+  color: #fff !important;
+  border: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.sheet-open-btn:hover {
+  background: #143323 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15) !important;
+}
+
+.sheet-open-btn .icon {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.sheet-delete-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  border: none !important;
+  background: transparent !important;
+  color: #5f6368 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.15s ease !important;
+}
+
+.sheet-delete-btn:hover {
+  background: #fce8e6 !important;
+  color: #c5221f !important;
+}
+
+.sheet-delete-btn .icon {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* Sheets Creation Grid Cards */
+.sheet-action-card {
+  padding: 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
+
+.sheet-card-header {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 14px !important;
+  margin-bottom: 20px !important;
+}
+
+.sheet-card-header h2 {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  margin: 0 0 4px !important;
+  color: #202124 !important;
+}
+
+.sheet-input-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.sheet-url-input {
+  flex: 1 !important;
+  min-height: 42px !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  padding: 0 14px !important;
+  font-size: 13px !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+}
+
+.sheet-url-input:focus {
+  border-color: #1a73e8 !important;
+  box-shadow: 0 0 0 2px rgba(26,115,232,0.18) !important;
+}
+
+.small-note {
+  font-size: 11.5px !important;
+  margin: 10px 0 0 !important;
+  color: #5f6368 !important;
+}
+
+/* Dropzone */
+.dropzone-box {
+  border: 2px dashed #dadce0 !important;
+  border-radius: 10px !important;
+  padding: 24px 16px !important;
+  text-align: center !important;
+  cursor: pointer !important;
+  background: #fafbfc !important;
+  transition: all 0.2s ease !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+}
+
+.dropzone-box:hover, .dropzone-box.dropzone-active {
+  border-color: #1a73e8 !important;
+  background: #f0f7ff !important;
+}
+
+.dropzone-cloud-icon {
+  width: 32px !important;
+  height: 32px !important;
+  color: #1a73e8 !important;
+}
+
+.dropzone-title {
+  font-size: 13.5px !important;
+  color: #3c4043 !important;
+  display: block !important;
+}
+
+.dropzone-hint {
+  font-size: 11.5px !important;
+  color: #70757a !important;
+  display: block !important;
+  margin-top: 2px !important;
+}
+
+.sheet-link-box {
+  border: 1px solid #dadce0 !important;
+  border-radius: 10px !important;
+  padding: 18px !important;
+  background: #fafbfc !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  min-height: 124px !important;
+  box-sizing: border-box !important;
+}
+
+.sheet-link-hint {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+  font-size: 11.5px !important;
+  color: #5f6368 !important;
+  line-height: 1.5 !important;
+}
+
+.sheet-link-hint .icon {
+  width: 14px !important;
+  height: 14px !important;
+  color: #1a73e8 !important;
+  flex-shrink: 0 !important;
+  margin-top: 1px !important;
+}
+
+/* ==========================================================================
+   Sheet Workspace Table & Layout Polish (Google Workspace Standards)
+   ========================================================================== */
+#sheet-preview {
+  margin-top: 20px !important;
+  padding: 24px !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+}
+
+#sheet-preview .sheet-workspace-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  margin-bottom: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+#sheet-preview .sheet-workspace-title-wrap {
+  flex: 1 1 240px !important;
+}
+
+#sheet-preview .sheet-workspace-title {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  color: #202124 !important;
+  margin: 0 0 2px !important;
+  letter-spacing: -0.3px !important;
+}
+
+#source-summary {
+  font-size: 12px !important;
+  color: #5f6368 !important;
+  margin: 0 !important;
+}
+
+#source-edit-note {
+  font-size: 12px !important;
+  color: #5f6368 !important;
+  margin: 0 0 14px !important;
+}
+
+/* Quick Filter Tabs */
+.sheet-filter-tabs {
+  display: flex !important;
+  gap: 8px !important;
+  margin: 14px 0 12px !important;
+  border-bottom: 1px solid #edf0eb !important;
+  padding-bottom: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+.sheet-tab-btn {
+  background: #f1f3f4 !important;
+  border: 1px solid transparent !important;
+  padding: 6px 14px !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  color: #5f6368 !important;
+  border-radius: 16px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.sheet-tab-btn:hover {
+  background: #e8eaed !important;
+  color: #202124 !important;
+}
+
+.sheet-tab-btn.active {
+  background: #1e4635 !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+
+.sheet-tab-btn .tab-count {
+  font-size: 11px !important;
+  padding: 1px 7px !important;
+  border-radius: 10px !important;
+  background: rgba(0, 0, 0, 0.08) !important;
+  color: inherit !important;
+  font-weight: 600 !important;
+}
+
+.sheet-tab-btn.active .tab-count {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #fff !important;
+}
+
+/* Search and Status Filter Toolbar */
+.sheet-search-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin: 14px 0 !important;
+}
+
+.sheet-search-toolbar .search-field {
+  position: relative !important;
+  flex: 1 1 360px !important;
+  max-width: 520px !important;
+}
+
+.sheet-search-toolbar .search-field .icon {
+  position: absolute !important;
+  left: 14px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  color: #5f6368 !important;
+  width: 17px !important;
+  height: 17px !important;
+  pointer-events: none !important;
+}
+
+.sheet-search-toolbar input#sheet-search {
+  width: 100% !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  border-radius: 19px !important;
+  border: 1px solid #dadce0 !important;
+  background-color: #f1f3f4 !important;
+  color: #202124 !important;
+  font-size: 13px !important;
+  padding: 0 16px 0 40px !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s ease !important;
+}
+
+.sheet-search-toolbar input#sheet-search:focus {
+  background-color: #fff !important;
+  border-color: #1a73e8 !important;
+  box-shadow: 0 1px 3px rgba(60,64,67,0.12), 0 4px 8px rgba(60,64,67,0.1) !important;
+}
+
+.sheet-search-toolbar select#sheet-status {
+  width: auto !important;
+  min-width: 140px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  border-radius: 19px !important;
+  border: 1px solid #dadce0 !important;
+  background-color: #fff !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235f6368' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 14px center !important;
+  background-size: 13px !important;
+  padding: 0 34px 0 16px !important;
+  margin: 0 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #3c4043 !important;
+  cursor: pointer !important;
+  outline: none !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+
+.sheet-search-toolbar select#sheet-status:hover {
+  background-color: #f8fafd !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+}
+
+/* Workspace Table Compact Styling */
+#sheet-preview .table-wrap {
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  overflow-x: auto !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgba(60,64,67,0.05) !important;
+}
+
+#sheet-preview table {
+  width: 100% !important;
+  min-width: 800px !important;
+  border-collapse: collapse !important;
+  font-size: 13px !important;
+}
+
+#sheet-preview table thead th {
+  padding: 10px 14px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+  color: #5f6368 !important;
+  background: #f8fafd !important;
+  border-bottom: 1px solid #dadce0 !important;
+  white-space: nowrap !important;
+  line-height: 1.3 !important;
+}
+
+#sheet-preview table tbody tr {
+  border-bottom: 1px solid #edf0eb !important;
+  transition: background-color 0.15s ease !important;
+}
+
+#sheet-preview table tbody tr:hover {
+  background-color: #f8fafd !important;
+}
+
+#sheet-preview table tbody td {
+  padding: 8px 14px !important;
+  vertical-align: middle !important;
+  font-size: 13px !important;
+  color: #202124 !important;
+  line-height: 1.4 !important;
+}
+
+/* Tight compact ID / Agency cell */
+.cell-id-agency-td {
+  vertical-align: middle !important;
+}
+
+.cell-id-agency {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1px !important;
+  justify-content: center !important;
+  line-height: 1.25 !important;
+  min-width: 120px !important;
+}
+
+.sheet-id-val {
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  color: #202124 !important;
+  line-height: 1.2 !important;
+  margin: 0 !important;
+}
+
+.sheet-agency-val {
+  font-size: 11.5px !important;
+  color: #5f6368 !important;
+  line-height: 1.2 !important;
+  margin: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 220px !important;
+}
+
+/* Email and Subject cells */
+.cell-email {
+  color: #1a73e8 !important;
+  font-variant-numeric: tabular-nums !important;
+  font-weight: 450 !important;
+  white-space: nowrap !important;
+}
+
+.cell-subject {
+  color: #3c4043 !important;
+  max-width: 240px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* Status Badges */
+.cell-status-wrap {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+}
+
+.badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 3px 9px !important;
+  border-radius: 12px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+}
+
+.badge.ready {
+  background: #e6f4ea !important;
+  color: #137333 !important;
+  border: 1px solid #ceead6 !important;
+}
+
+.badge.issue {
+  background: #fce8e6 !important;
+  color: #c5221f !important;
+  border: 1px solid #fad2cf !important;
+}
+
+.badge.not_queued {
+  background: #f1f3f4 !important;
+  color: #5f6368 !important;
+  border: 1px solid #dadce0 !important;
+}
+
+.badge.sent {
+  background: #e6f4ea !important;
+  color: #137333 !important;
+  border: 1px solid #ceead6 !important;
+}
+
+.badge.failed {
+  background: #fce8e6 !important;
+  color: #c5221f !important;
+  border: 1px solid #fad2cf !important;
+}
+
+/* Row Action Buttons */
+.sheet-row-actions {
+  white-space: nowrap !important;
+}
+
+.sheet-btn-action {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  border-radius: 14px !important;
+  border: 1px solid #dadce0 !important;
+  background: #fff !important;
+  color: #3c4043 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 4px 0 0 !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s ease !important;
+}
+
+.sheet-btn-action:hover:not(:disabled) {
+  background: #f1f3f4 !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+}
+
+.sheet-btn-action:disabled {
+  opacity: 0.45 !important;
+  background: #f8f9fa !important;
+  border-color: #e8eaed !important;
+  color: #80868b !important;
+  cursor: not-allowed !important;
+}
+
+.sheet-btn-action.btn-send-single:hover:not(:disabled) {
+  background: #e6f4ea !important;
+  border-color: #137333 !important;
+  color: #137333 !important;
+}
+
+/* Pagination Bar */
+.sheet-pagination {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 16px !important;
+  padding: 14px 16px 6px !important;
+  font-size: 12.5px !important;
+  color: #5f6368 !important;
+}
+
+.sheet-pagination select {
+  height: 32px !important;
+  padding: 0 24px 0 10px !important;
+  border-radius: 6px !important;
+  border: 1px solid #dadce0 !important;
+  font-size: 12.5px !important;
+  background: #fff !important;
+  cursor: pointer !important;
+}
+
+.sheet-pagination button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 14px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  border: 1px solid #dadce0 !important;
+  background: #fff !important;
+  color: #3c4043 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.sheet-pagination button:hover:not(:disabled) {
+  background: #f1f3f4 !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+}
+
+.sheet-pagination button:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+/* ==========================================================================
+   Sent Emails & Overview Queue Polish (Google Workspace Standards)
+   ========================================================================== */
+#sent .table-card,
+#overview .table-card {
+  margin-top: 20px !important;
+  padding: 22px 24px 16px !important;
+  border-radius: 12px !important;
+  border: 1px solid #dadce0 !important;
+  box-shadow: 0 1px 3px rgba(60,64,67,0.06) !important;
+  background: #fff !important;
+}
+
+#sent .table-wrap,
+#overview .table-wrap {
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  overflow-x: auto !important;
+  background: #fff !important;
+  margin-top: 14px !important;
+  box-shadow: 0 1px 2px rgba(60,64,67,0.05) !important;
+}
+
+#sent table,
+#overview table {
+  width: 100% !important;
+  min-width: 780px !important;
+  border-collapse: collapse !important;
+  font-size: 13px !important;
+}
+
+#sent .table-wrap,
+#overview .table-wrap {
+  overflow-x: hidden !important;
+}
+
+#sent table,
+#overview table {
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+#sent th,
+#sent td,
+#overview th,
+#overview td {
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#sent table thead th,
+#overview table thead th {
+  padding: 10px 14px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+  color: #5f6368 !important;
+  background: #f8fafd !important;
+  border-bottom: 1px solid #dadce0 !important;
+  white-space: nowrap !important;
+  line-height: 1.3 !important;
+}
+
+#sent table tbody tr,
+#overview table tbody tr {
+  border-bottom: 1px solid #edf0eb !important;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease !important;
+  cursor: pointer !important;
+}
+
+#sent table tbody tr:hover,
+#overview table tbody tr:hover {
+  background: #f2f6fc !important;
+  box-shadow: inset 3px 0 0 #1a73e8 !important;
+}
+
+#sent table tbody td,
+#overview table tbody td {
+  padding: 9px 14px !important;
+  vertical-align: middle !important;
+  font-size: 13px !important;
+  color: #202124 !important;
+  line-height: 1.4 !important;
+}
+
+.sent-cell-recipient {
+  font-weight: 500 !important;
+  color: #202124 !important;
+  white-space: nowrap !important;
+}
+
+.sent-cell-subject {
+  color: #3c4043 !important;
+  max-width: 340px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.sent-cell-date {
+  color: #5f6368 !important;
+  font-size: 12px !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+}
+
+.sent-cell-status {
+  white-space: nowrap !important;
+}
+
+.sent-cell-action {
+  text-align: right !important;
+  white-space: nowrap !important;
+  padding-right: 18px !important;
+}
+
+.sent-btn-details,
+#overview .email-actions button {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 14px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  border-radius: 14px !important;
+  border: 1px solid #dadce0 !important;
+  background: #fff !important;
+  color: #3c4043 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s ease !important;
+}
+
+.sent-btn-details:hover,
+#overview .email-actions button:hover {
+  background: #f1f3f4 !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+}
+
+/* Pagination bar alignment */
+#sent .pagination-bar,
+#overview .pagination-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 16px !important;
+  padding: 14px 16px 4px !important;
+  font-size: 12.5px !important;
+  color: #5f6368 !important;
+}
+
+#sent .pagination-bar select,
+#overview .pagination-bar select {
+  height: 32px !important;
+  padding: 0 24px 0 10px !important;
+  border-radius: 6px !important;
+  border: 1px solid #dadce0 !important;
+  font-size: 12.5px !important;
+  background: #fff !important;
+  cursor: pointer !important;
+}
+
+#sent .pagination-buttons button,
+#overview .pagination-buttons button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 14px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  border: 1px solid #dadce0 !important;
+  background: #fff !important;
+  color: #3c4043 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#sent .pagination-buttons button:hover:not(:disabled),
+#overview .pagination-buttons button:hover:not(:disabled) {
+  background: #f1f3f4 !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+}
+
+#sent .pagination-buttons button:disabled,
+#overview .pagination-buttons button:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+/* ==========================================================================
+   Email Detail Modal Dialog Polish (Google Workspace Standards)
+   ========================================================================== */
+#email-detail {
+  width: min(860px, calc(100vw - 32px)) !important;
+  max-height: 90vh !important;
+  padding: 0 !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 16px !important;
+  color: #202124 !important;
+  background: #fff !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2) !important;
+  overflow: hidden !important;
+}
+
+#email-detail[open] {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#email-detail::backdrop {
+  background: rgba(32, 33, 36, 0.55) !important;
+  backdrop-filter: blur(3px) !important;
+}
+
+.email-id-tag {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #202124 !important;
+  background: #f1f3f4 !important;
+  padding: 3px 10px !important;
+  border-radius: 12px !important;
+}
+
+.email-delivery-pill {
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  padding: 3px 10px !important;
+  border-radius: 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  background: #f1f3f4 !important;
+  color: #5f6368 !important;
+}
+
+.email-delivery-pill.sent {
+  background: #e6f4ea !important;
+  color: #137333 !important;
+  border: 1px solid #ceead6 !important;
+}
+
+.email-delivery-pill.failed {
+  background: #fce8e6 !important;
+  color: #c5221f !important;
+  border: 1px solid #fad2cf !important;
+}
+
+.email-delivery-pill.dry_run {
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+  border: 1px solid #d2e3fc !important;
+}
+
+.delivery-status-banner {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 16px !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+  margin-bottom: 16px !important;
+  line-height: 1.4 !important;
+}
+
+.delivery-status-banner.success {
+  background: #e6f4ea !important;
+  border: 1px solid #ceead6 !important;
+  color: #137333 !important;
+}
+
+.delivery-status-banner.error {
+  background: #fce8e6 !important;
+  border: 1px solid #fad2cf !important;
+  color: #c5221f !important;
+}
+
+.delivery-status-banner .icon {
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+.detail-section-title {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.6px !important;
+  color: #5f6368 !important;
+  margin-bottom: 8px !important;
+}
+
+.delivery-timeline {
+  position: relative !important;
+  padding-left: 20px !important;
+  margin: 12px 0 18px !important;
+}
+
+.delivery-timeline::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 5px !important;
+  top: 6px !important;
+  bottom: 6px !important;
+  width: 2px !important;
+  background: #e0e3e7 !important;
+}
+
+.timeline-step {
+  position: relative !important;
+  margin-bottom: 14px !important;
+}
+
+.timeline-step:last-child {
+  margin-bottom: 0 !important;
+}
+
+.timeline-marker {
+  position: absolute !important;
+  left: -20px !important;
+  top: 4px !important;
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 50% !important;
+  background: #1a73e8 !important;
+  border: 2px solid #fff !important;
+  box-shadow: 0 0 0 1px #dadce0 !important;
+}
+
+.timeline-marker.active {
+  background: #137333 !important;
+}
+
+.timeline-text {
+  font-size: 13px !important;
+  color: #202124 !important;
+  font-weight: 500 !important;
+}
+
+.timeline-date {
+  font-size: 11.5px !important;
+  color: #5f6368 !important;
+  margin-top: 2px !important;
+}
+
+.detail-meta-footer {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 16px !important;
+  padding: 12px 16px !important;
+  background: #f8fafd !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  margin-top: 24px !important;
+  font-size: 12px !important;
+  color: #5f6368 !important;
+}
+
+.detail-meta-footer .meta-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.detail-meta-footer code {
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace !important;
+  font-size: 11px !important;
+  background: #fff !important;
+  padding: 2px 6px !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 4px !important;
+  color: #3c4043 !important;
+  max-width: 320px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  display: inline-block !important;
+}
+
+/* Gmail-Style Conversation Threading */
+.thread-count-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #1a73e8 !important;
+  background: #e8f0fe !important;
+  border-radius: 10px !important;
+  padding: 1px 7px !important;
+  margin-left: 6px !important;
+  vertical-align: middle !important;
+  line-height: 1.4 !important;
+}
+
+.thread-overview-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 10px 14px !important;
+  background: #f8fafd !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  margin: 12px 0 16px !important;
+  font-size: 12.5px !important;
+}
+
+.thread-overview-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-weight: 500 !important;
+  color: #3c4043 !important;
+}
+
+.thread-overview-pill {
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+
+.thread-toggle-all-btn {
+  background: transparent !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 14px !important;
+  padding: 3px 10px !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  color: #444746 !important;
+  cursor: pointer !important;
+}
+
+.thread-toggle-all-btn:hover {
+  background: #f1f3f4 !important;
+  color: #1f1f1f !important;
+}
+
+.thread-stack {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
+
+.thread-card {
+  border: 1px solid #dadce0 !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  overflow: hidden !important;
+  transition: all 0.15s ease !important;
+}
+
+.thread-card.outgoing {
+  border-left: 3.5px solid #137333 !important;
+}
+
+.thread-card.incoming {
+  border-left: 3.5px solid #1a73e8 !important;
+}
+
+.thread-card-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 10px 14px !important;
+  cursor: pointer !important;
+  background: #fafbfc !important;
+  user-select: none !important;
+}
+
+.thread-card-head:hover {
+  background: #f1f3f4 !important;
+}
+
+.thread-card-meta {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.thread-avatar {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  flex-shrink: 0 !important;
+}
+
+.thread-sender-group {
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.thread-sender-line1 {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.thread-sender-name {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  color: #202124 !important;
+}
+
+.thread-pill-tag {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+}
+
+.thread-pill-tag.sent {
+  background: #e6f4ea !important;
+  color: #137333 !important;
+}
+
+.thread-pill-tag.inbox {
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+}
+
+.thread-collapsed-snippet {
+  font-size: 12px !important;
+  color: #5f6368 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 520px !important;
+}
+
+.thread-head-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.thread-date {
+  font-size: 11.5px !important;
+  color: #5f6368 !important;
+  white-space: nowrap !important;
+}
+
+.thread-chevron {
+  width: 16px !important;
+  height: 16px !important;
+  color: #5f6368 !important;
+  transition: transform 0.2s ease !important;
+}
+
+.thread-card.is-expanded .thread-chevron {
+  transform: rotate(180deg) !important;
+}
+
+.thread-card-body {
+  display: none !important;
+  padding: 14px 16px !important;
+  border-top: 1px solid #f1f3f4 !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  color: #202124 !important;
+  background: #fff !important;
+}
+
+.thread-card.is-expanded .thread-card-body {
+  display: block !important;
+}
+
+.thread-body-text {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+}
+
+.thread-quoted-block {
+  margin-top: 10px !important;
+  padding: 10px 14px !important;
+  border-left: 2px solid #dadce0 !important;
+  background: #f8f9fa !important;
+  border-radius: 0 8px 8px 0 !important;
+  color: #5f6368 !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+}
+
+.thread-trimmed-wrapper {
+  margin-top: 10px !important;
+}
+
+.thread-trimmed-toggle {
+  background: #f1f3f4 !important;
+  border: 1px solid #dadce0 !important;
+  color: #5f6368 !important;
+  border-radius: 4px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  padding: 0 8px !important;
+  height: 20px !important;
+  line-height: 18px !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.15s ease !important;
+}
+
+.thread-trimmed-toggle:hover {
+  background: #dadce0 !important;
+  color: #202124 !important;
+}
+
+.thread-trimmed-toggle.active {
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+  border-color: #1a73e8 !important;
+}
+
+.thread-trimmed-content {
+  margin-top: 8px !important;
+}
+
+/* Quick reply bar inside thread view */
+.thread-inline-reply {
+  margin-top: 16px !important;
+  background: #fafbfc !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 10px !important;
+  padding: 14px !important;
+}
+
+.thread-inline-reply-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  color: #3c4043 !important;
+  margin-bottom: 10px !important;
+}
+
+.thread-inline-reply textarea {
+  width: 100% !important;
+  min-height: 85px !important;
+  padding: 10px 12px !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-family: inherit !important;
+  background: #fff !important;
+  box-sizing: border-box !important;
+  resize: vertical !important;
+}
+
+.thread-inline-reply textarea:focus {
+  outline: none !important;
+  border-color: #1a73e8 !important;
+  box-shadow: 0 0 0 2px rgba(26,115,232,0.18) !important;
+}
+
+.thread-inline-reply-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  margin-top: 10px !important;
+}
+
+/* Authentic Gmail Thread Reader Canvas (Full Page View) */
+#thread-view {
+  padding-top: 12px !important;
+}
+
+.gmail-reader-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 8px 16px !important;
+  background: #fff !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 12px 12px 0 0 !important;
+  border-bottom: none !important;
+}
+
+.gmail-toolbar-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.gmail-toolbar-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.gmail-toolbar-divider {
+  width: 1px !important;
+  height: 20px !important;
+  background: #dadce0 !important;
+  margin: 0 4px !important;
+}
+
+.gmail-tool-btn {
+  background: transparent !important;
+  border: none !important;
+  color: #444746 !important;
+  padding: 6px 12px !important;
+  border-radius: 18px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.gmail-tool-btn:hover {
+  background: #f1f3f4 !important;
+  color: #1f1f1f !important;
+}
+
+.gmail-tool-btn.icon-only {
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  justify-content: center !important;
+}
+
+.gmail-reader-canvas {
+  background: #fff !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 0 0 12px 12px !important;
+  padding: 24px 36px 36px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+}
+
+.gmail-canvas-header {
+  padding-bottom: 20px !important;
+  border-bottom: 1px solid #f1f3f4 !important;
+}
+
+.gmail-canvas-title-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+.gmail-canvas-subject {
+  font-size: 22px !important;
+  font-weight: 500 !important;
+  color: #1f1f1f !important;
+  line-height: 1.35 !important;
+  margin: 0 !important;
+  letter-spacing: -0.2px !important;
+}
+
+.gmail-tag-pill {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #1a73e8 !important;
+  background: #e8f0fe !important;
+  padding: 2px 8px !important;
+  border-radius: 4px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.gmail-messages-stream {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Collapsed Message (e.g. Urvashi in screenshot 1) */
+.gmail-msg-collapsed {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  padding: 12px 0 !important;
+  border-bottom: 1px solid #f1f3f4 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  transition: background 0.15s ease !important;
+}
+
+.gmail-msg-collapsed[hidden] {
+  display: none !important;
+}
+
+.gmail-msg-collapsed:hover {
+  background: #f8fafd !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  border-radius: 6px !important;
+}
+
+.gmail-msg-collapsed-avatar {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  flex-shrink: 0 !important;
+}
+
+.gmail-msg-collapsed-sender {
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  color: #202124 !important;
+  width: 170px !important;
+  min-width: 120px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.gmail-msg-collapsed-snippet {
+  flex: 1 !important;
+  font-size: 13px !important;
+  color: #5f6368 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
+}
+
+.gmail-msg-collapsed-date {
+  font-size: 12px !important;
+  color: #5f6368 !important;
+  white-space: nowrap !important;
+}
+
+/* Expanded Message (e.g. Nikhil in screenshot 1 & 2) */
+.gmail-msg-expanded {
+  padding: 20px 0 24px !important;
+  border-bottom: 1px solid #f1f3f4 !important;
+}
+
+.gmail-msg-expanded[hidden] {
+  display: none !important;
+}
+
+.gmail-msg-expanded:last-child {
+  border-bottom: none !important;
+}
+
+.gmail-msg-expanded.is-collapsible .gmail-msg-expanded-header {
+  cursor: pointer !important;
+  user-select: none !important;
+  border-radius: 6px !important;
+  padding: 4px 6px !important;
+  margin: -4px -6px 14px !important;
+  transition: background 0.15s ease !important;
+}
+
+.gmail-msg-expanded.is-collapsible .gmail-msg-expanded-header:hover {
+  background: #f8fafd !important;
+}
+
+.gmail-msg-expanded-header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin-bottom: 18px !important;
+}
+
+.gmail-msg-expanded-header-left {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 14px !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.gmail-msg-expanded-avatar {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  flex-shrink: 0 !important;
+}
+
+.gmail-msg-expanded-meta {
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+}
+
+.gmail-msg-meta-line1 {
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+.gmail-msg-sender-name {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #202124 !important;
+}
+
+.gmail-msg-sender-email {
+  font-size: 12px !important;
+  color: #5f6368 !important;
+}
+
+.gmail-msg-meta-line2 {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 12px !important;
+  color: #5f6368 !important;
+  margin-top: 2px !important;
+}
+
+.gmail-msg-to-pill {
+  color: #444746 !important;
+  font-weight: 500 !important;
+}
+
+.gmail-msg-expanded-header-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  font-size: 12px !important;
+  color: #5f6368 !important;
+  white-space: nowrap !important;
+}
+
+.gmail-msg-body {
+  font-size: 14px !important;
+  line-height: 1.65 !important;
+  color: #202124 !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  padding-left: 54px !important;
+}
+
+.gmail-body-text {
+  font-size: 14px !important;
+  line-height: 1.65 !important;
+  color: #202124 !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+}
+
+/* Bottom Action Pills (Reply, Forward) */
+.gmail-bottom-actions {
+  display: flex !important;
+  gap: 12px !important;
+  margin-top: 28px !important;
+  padding-left: 54px !important;
+}
+
+.gmail-action-pill {
+  border: 1px solid #dadce0 !important;
+  background: #fff !important;
+  border-radius: 20px !important;
+  padding: 8px 24px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  color: #3c4043 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.gmail-action-pill:hover {
+  background: #f8fafd !important;
+  border-color: #1a73e8 !important;
+  color: #1a73e8 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+}
+
+/* Inline Composer */
+.gmail-inline-composer {
+  margin-top: 24px !important;
+  margin-left: 54px !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  background: #fff !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+}
+
+.inline-composer-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 12.5px !important;
+  color: #5f6368 !important;
+  margin-bottom: 12px !important;
+}
+
+.gmail-inline-composer textarea {
+  width: 100% !important;
+  border: 1px solid #dadce0 !important;
+  border-radius: 8px !important;
+  padding: 12px 14px !important;
+  font-size: 13.5px !important;
+  font-family: inherit !important;
+  resize: vertical !important;
+  min-height: 120px !important;
+  box-sizing: border-box !important;
+}
+
+.gmail-inline-composer textarea:focus {
+  outline: none !important;
+  border-color: #1a73e8 !important;
+  box-shadow: 0 0 0 2px rgba(26,115,232,0.18) !important;
+}
+
+.inline-composer-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-top: 14px !important;
+}
+
+/* Executive Dashboard Polish */
+.dash-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 20px !important;
+  flex-wrap: wrap !important;
+  gap: 16px !important;
+}
+
+.dash-title {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  color: #1f2923 !important;
+  margin: 4px 0 6px !important;
+  letter-spacing: -0.5px !important;
+}
+
+.dash-kpi-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 18px !important;
+  margin-bottom: 24px !important;
+}
+
+.dash-kpi-card {
+  padding: 20px !important;
+  border-radius: 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.dash-kpi-header {
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  color: #66786c !important;
+  letter-spacing: 0.5px !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 8px !important;
+}
+
+.dash-kpi-val {
+  font-size: 32px !important;
+  font-weight: 700 !important;
+  color: #1f2923 !important;
+  margin-bottom: 8px !important;
+  line-height: 1.1 !important;
+}
+
+.dash-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  padding: 3px 8px !important;
+  border-radius: 20px !important;
+  width: fit-content !important;
+}
+
+.dash-badge.green {
+  background: #e6f4ea !important;
+  color: #137333 !important;
+}
+
+.dash-badge.blue {
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+}
+
+.dash-badge.amber {
+  background: #fef7e0 !important;
+  color: #b06000 !important;
+}
+
+/* Analytics Grid */
+.dash-analytics-grid {
+  display: grid !important;
+  grid-template-columns: 2fr 1fr !important;
+  gap: 20px !important;
+  margin-bottom: 24px !important;
+}
+
+.dash-card-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-start !important;
+  margin-bottom: 18px !important;
+}
+
+.dash-card-title {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: #1f2923 !important;
+  margin: 0 !important;
+}
+
+.dash-card-subtitle {
+  font-size: 12.5px !important;
+  color: #66786c !important;
+  margin: 2px 0 0 !important;
+}
+
+.dash-time-pills {
+  display: inline-flex !important;
+  background: #edf1ee !important;
+  padding: 3px !important;
+  border-radius: 8px !important;
+}
+
+.dash-time-pill {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #66786c !important;
+  cursor: pointer !important;
+}
+
+.dash-time-pill.active {
+  background: #fff !important;
+  color: #1f2923 !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06) !important;
+}
+
+.dash-chart-container {
+  width: 100% !important;
+  height: 220px !important;
+  position: relative !important;
+}
+
+.dash-chart-legend {
+  display: flex !important;
+  gap: 18px !important;
+  margin-top: 14px !important;
+  padding-top: 14px !important;
+  border-top: 1px solid #f0f3f0 !important;
+  font-size: 12.5px !important;
+  color: #66786c !important;
+  flex-wrap: wrap !important;
+}
+
+.dash-legend-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.dash-legend-dot {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 50% !important;
+  display: inline-block !important;
+}
+
+/* Donut */
+.dash-donut-wrap {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 6px 0 !important;
+}
+
+.dash-ratio-list {
+  width: 100% !important;
+  margin-top: 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
+
+.dash-ratio-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  font-size: 13px !important;
+}
+
+.dash-ratio-label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  color: #66786c !important;
+}
+
+.dash-ratio-val {
+  font-weight: 700 !important;
+  color: #1f2923 !important;
+}
+
+/* Bottom Grid */
+.dash-bottom-grid {
+  display: grid !important;
+  grid-template-columns: 1.6fr 1fr !important;
+  gap: 20px !important;
+}
+
+.dash-contact-item {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 12px 14px !important;
+  border-radius: 10px !important;
+  border: 1px solid #f0f3f0 !important;
+  margin-bottom: 10px !important;
+  background: #fff !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer !important;
+}
+
+.dash-contact-item:hover {
+  background: #f8fbf9 !important;
+  border-color: #cbdcd0 !important;
+}
+
+.dash-contact-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+}
+
+.dash-contact-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  flex-shrink: 0 !important;
+}
+
+.dash-contact-name {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  color: #1f2923 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.dash-contact-email {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  color: #66786c !important;
+}
+
+.dash-contact-snippet {
+  font-size: 12px !important;
+  color: #66786c !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  margin-top: 2px !important;
+}
+
+.dash-contact-right {
+  text-align: right !important;
+  flex-shrink: 0 !important;
+}
+
+.dash-contact-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  background: #e8f0fe !important;
+  color: #1a73e8 !important;
+}
+
+.dash-contact-time {
+  font-size: 11px !important;
+  color: #66786c !important;
+  margin-top: 4px !important;
+}
+
+.dash-health-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+.dash-health-item {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+  padding: 10px 0 !important;
+  border-bottom: 1px solid #f0f3f0 !important;
+}
+
+.dash-health-item:last-child {
+  border-bottom: none !important;
+}
+
+.dash-health-dot {
+  width: 9px !important;
+  height: 9px !important;
+  border-radius: 50% !important;
+  margin-top: 6px !important;
+  flex-shrink: 0 !important;
+}
+
+.dash-health-dot.online {
+  background: #137333 !important;
+  box-shadow: 0 0 0 3px rgba(19, 115, 51, 0.15) !important;
+}
+
+.dash-health-title {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  color: #1f2923 !important;
+}
+
+.dash-health-meta {
+  font-size: 12px !important;
+  color: #66786c !important;
+  margin-top: 2px !important;
+}
+
+@media (max-width: 1024px) {
+  .dash-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .dash-analytics-grid, .dash-bottom-grid { grid-template-columns: 1fr !important; }
+}
+
+
+
