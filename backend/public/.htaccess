@@ -1,0 +1,11 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Deny direct access to hidden files
+    RewriteRule ^\.env - [F,L,NC]
+
+    # Handle Angular / React / Vue / SPA / Custom PHP front-controller routes
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L,QSA]
+</IfModule>

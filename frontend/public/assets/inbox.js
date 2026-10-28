@@ -87,16 +87,25 @@
           });
           const snippet = (msg.snippet || msg.body || '').replace(/[\r\n\t]+/g, ' ').trim();
 
-          const mainContent = escapeHtml((msg.body || '').trim());
+          const hasHtml = Boolean(msg.html_body && msg.html_body.trim());
+          const mainContent = linkifyText((msg.body || '').trim());
           const quotedText = (msg.quoted_history || '').trim();
           const trimmedToggle = quotedText ? `
             <div class="thread-trimmed-wrapper">
               <button type="button" class="thread-trimmed-toggle" title="Show trimmed content">&hellip;</button>
               <div class="thread-trimmed-content" hidden>
-                <div class="thread-quoted-block">${escapeHtml(quotedText)}</div>
+                <div class="thread-quoted-block">${linkifyText(quotedText)}</div>
               </div>
             </div>
           ` : '';
+
+          let bodyRenderHtml = '';
+          if (hasHtml) {
+            const escapedDoc = escapeHtml(`<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:4px 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#202124;line-height:1.5;background:transparent;word-break:break-word}img{max-width:100%!important;height:auto}table{max-width:100%!important}a{color:#1a73e8}</style></head><body>${msg.html_body}</body></html>`);
+            bodyRenderHtml = `<div class="thread-html-wrapper"><iframe class="email-html-frame" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin" srcdoc="${escapedDoc}"></iframe></div>`;
+          } else {
+            bodyRenderHtml = `<div class="thread-body-text">${mainContent || (quotedText ? '<em>(Quoted reply content)</em>' : '<em>(No message content)</em>')}</div>`;
+          }
 
           return `
             <div class="thread-card ${msg.type} ${isLast ? 'is-expanded' : ''}" data-msg-idx="${idx}">
@@ -121,7 +130,7 @@
                   <span>From: <strong>${escapeHtml(msg.sender_email)}</strong></span> &middot;
                   <span>To: <strong>${escapeHtml(msg.recipient)}</strong></span>
                 </div>
-                <div class="thread-body-text">${mainContent || '<em>(No plain text content)</em>'}</div>
+                ${bodyRenderHtml}
                 ${trimmedToggle}
               </div>
             </div>

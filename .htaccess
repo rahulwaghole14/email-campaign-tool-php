@@ -1,0 +1,19 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. Protect sensitive files & folders from direct browser download
+    RewriteRule ^\.env - [F,L,NC]
+    RewriteRule ^backend/\.env - [F,L,NC]
+    RewriteRule ^database\.sql - [F,L,NC]
+    RewriteRule ^backend/database\.sql - [F,L,NC]
+    RewriteRule ^backend/storage/ - [F,L,NC]
+    RewriteRule ^backend/app/ - [F,L,NC]
+    RewriteRule ^docs/ - [F,L,NC]
+
+    # 2. Serve static assets directly from frontend/public/assets/
+    RewriteRule ^assets/(.*)$ frontend/public/assets/$1 [L]
+
+    # 3. Route all web requests to the backend entry point
+    RewriteCond %{REQUEST_URI} !^/backend/public/
+    RewriteRule ^(.*)$ backend/public/index.php [L,QSA]
+</IfModule>

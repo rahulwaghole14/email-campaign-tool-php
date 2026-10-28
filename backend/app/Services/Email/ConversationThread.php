@@ -42,6 +42,7 @@ final class ConversationThread
     {
         $text = self::cleanArtifacts($text);
         $patterns = [
+            '/(?:\r?\n|^)\s*-{2,}\s*On\s+.+?\s+wrote:\s*-{2,}\s*(?:\r?\n|$)/is',
             '/(?:\r?\n|^)\s*On\s+.+?\s+wrote\s*:\s*(?:\r?\n|$)/is',
             '/(?:\r?\n|^)\s*-{3,}\s*Original Message\s*-{3,}\s*(?:\r?\n|$)/i',
             '/(?:\r?\n|^)\s*_{5,}\s*(?:\r?\n|$)/',
@@ -66,7 +67,7 @@ final class ConversationThread
             $quoteLines = [];
             $inQuote = false;
             foreach ($lines as $line) {
-                if (preg_match('/^\s*>/', $line)) {
+                if (preg_match('/^\s*(?:>|-{2,}\s*On\s+.+wrote)/i', $line)) {
                     $inQuote = true;
                     $quoteLines[] = $line;
                 } elseif ($inQuote) {
@@ -83,11 +84,6 @@ final class ConversationThread
 
         $main = self::cleanArtifacts($main);
         $quoted = self::cleanArtifacts($quoted);
-
-        if ($main === '' && $quoted !== '') {
-            $main = $quoted;
-            $quoted = '';
-        }
 
         return ['main' => $main, 'quoted' => $quoted];
     }

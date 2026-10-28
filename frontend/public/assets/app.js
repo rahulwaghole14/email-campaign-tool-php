@@ -197,22 +197,20 @@ window.currentThreadId = null;
 function formatEmailBodyText(text) {
   if (!text) return '';
   const escaped = escapeHtml(text);
-  return escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#1a73e8;text-decoration:underline">$1</a>');
+  return escaped.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
+    const clean = url.replace(/[.,;:)\]]+$/, '');
+    const trail = url.substring(clean.length);
+    const label = clean.length > 55 ? clean.substring(0, 48) + '…' : clean;
+    return `<a href="${clean}" target="_blank" rel="noopener noreferrer" style="color:#1a73e8;text-decoration:underline">${label}</a>${trail}`;
+  });
 }
 
 function createExpandedMessageElement(msg, senderName, av, initial, dateFormatted, mainBody, quotedText, isCollapsible = false) {
   const el = document.createElement('div');
   el.className = 'gmail-msg-expanded' + (isCollapsible ? ' is-collapsible' : '');
   
-  // Render email body natively with clean typography (matching Gmail, no empty iframes)
-  let contentHtml = '';
-  if (mainBody && mainBody.trim()) {
-    contentHtml = `<div class="gmail-body-text">${formatEmailBodyText(mainBody)}</div>`;
-  } else if (msg.html_body && msg.html_body.trim()) {
-    contentHtml = `<div class="gmail-body-text">${msg.html_body}</div>`;
-  } else {
-    contentHtml = `<div class="gmail-body-text" style="color:#5f6368;font-style:italic">(No message content)</div>`;
-  }
+  const hasHtml = Boolean(msg.html_body && msg.html_body.trim());
+  const hasPlain = Boolean(mainBody && mainBody.trim());
 
   const trimmedHtml = quotedText ? `
     <div class="thread-trimmed-wrapper">
@@ -221,6 +219,10 @@ function createExpandedMessageElement(msg, senderName, av, initial, dateFormatte
         <div class="thread-quoted-block">${formatEmailBodyText(quotedText)}</div>
       </div>
     </div>
+  ` : '';
+
+  const formatToggleBtn = (hasHtml && hasPlain) ? `
+    <button type="button" class="thread-format-toggle-btn" title="Toggle Plain Text / HTML">View plain text</button>
   ` : '';
 
   el.innerHTML = `
@@ -239,14 +241,77 @@ function createExpandedMessageElement(msg, senderName, av, initial, dateFormatte
         </div>
       </div>
       <div class="gmail-msg-expanded-header-right">
+        ${formatToggleBtn}
         <span>${dateFormatted}</span>
       </div>
     </div>
     <div class="gmail-msg-body">
-      ${contentHtml}
+      <div class="gmail-body-container"></div>
       ${trimmedHtml}
     </div>
   `;
+
+  const bodyContainer = el.querySelector('.gmail-body-container');
+  let showingHtml = hasHtml;
+
+  function renderBody() {
+    bodyContainer.replaceChildren();
+    if (showingHtml && hasHtml) {
+      const iframe = document.createElement('iframe');
+      iframe.className = 'email-html-frame';
+      iframe.sandbox = 'allow-popups allow-popups-to-escape-sandbox allow-same-origin';
+      iframe.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>
+        html,body{margin:0;padding:4px 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#202124;line-height:1.5;background:transparent;word-break:break-word}
+        img{max-width:100%!important;height:auto}
+        table{max-width:100%!important}
+        a{color:#1a73e8}
+      </style></head><body>${msg.html_body}</body></html>`;
+
+      function resize() {
+        try {
+          const doc = iframe.contentDocument || iframe.contentWindow.document;
+          if (doc && doc.body) {
+            doc.body.style.margin = '0';
+            const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 24);
+            iframe.style.height = (h + 12) + 'px';
+          }
+        } catch (e) {}
+      }
+
+      iframe.addEventListener('load', () => {
+        resize();
+        setTimeout(resize, 200);
+        setTimeout(resize, 600);
+      });
+
+      bodyContainer.append(iframe);
+      el._iframeResize = resize;
+    } else if (hasPlain) {
+      const plainBox = document.createElement('div');
+      plainBox.className = 'gmail-body-text';
+      plainBox.innerHTML = formatEmailBodyText(mainBody);
+      bodyContainer.append(plainBox);
+    } else {
+      const emptyBox = document.createElement('div');
+      emptyBox.className = 'gmail-body-text';
+      emptyBox.style.color = '#5f6368';
+      emptyBox.style.fontStyle = 'italic';
+      emptyBox.textContent = quotedText ? '(Quoted reply content)' : '(No message content)';
+      bodyContainer.append(emptyBox);
+    }
+  }
+
+  renderBody();
+
+  const toggleBtn = el.querySelector('.thread-format-toggle-btn');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showingHtml = !showingHtml;
+      toggleBtn.textContent = showingHtml ? 'View plain text' : 'View formatted HTML';
+      renderBody();
+    });
+  }
 
   el.querySelector('.thread-trimmed-toggle')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -301,11 +366,12 @@ function renderCanvasMessages(thread, container, counterpart, originalSubject) {
         collapsedEl.hidden = true;
         expandedEl.style.display = 'block';
         expandedEl.hidden = false;
+        if (expandedEl._iframeResize) expandedEl._iframeResize();
       });
 
       // Clicking expanded header folds it back to single-line row (like Gmail)
       expandedEl.querySelector('.gmail-msg-expanded-header')?.addEventListener('click', (e) => {
-        if (e.target.closest('button, a, input, .thread-trimmed-toggle')) return;
+        if (e.target.closest('button, a, input, .thread-trimmed-toggle, .thread-format-toggle-btn')) return;
         expandedEl.style.display = 'none';
         expandedEl.hidden = true;
         collapsedEl.style.display = 'flex';
