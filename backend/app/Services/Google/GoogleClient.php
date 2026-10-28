@@ -17,7 +17,11 @@ final class GoogleClient
 
     public function connected(): bool
     {
-        return (bool) $this->db->query('SELECT id FROM google_connection WHERE id = 1')->fetchColumn();
+        try {
+            return (bool) $this->db->query('SELECT id FROM google_connection WHERE id = 1')->fetchColumn();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function authorizationUrl(string $state, ?string $redirectUri = null): string

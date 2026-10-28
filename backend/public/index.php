@@ -262,6 +262,10 @@ try {
 } catch (InvalidArgumentException|JsonException $e) {
     respond(['error' => $e->getMessage()], 422);
 } catch (Throwable $e) {
-    error_log($e->getMessage());
-    respond(['error' => 'Unable to complete the request. Check the backend configuration and server logs.'], 500);
+    error_log($e->getMessage() . "\n" . $e->getTraceAsString());
+    $isDebug = (getenv('APP_DEBUG') === 'true' || getenv('APP_ENV') === 'local');
+    $errMsg = $isDebug
+        ? $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')'
+        : 'Unable to complete the request. Check the backend configuration and server logs.';
+    respond(['error' => $errMsg], 500);
 }

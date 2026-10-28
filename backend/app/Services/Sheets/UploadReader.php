@@ -12,11 +12,30 @@ final class UploadReader
     public const MAX_BYTES = 5 * 1024 * 1024;
     private const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 
+    public static function parseQuantity(?string $val): int
+    {
+        if ($val === null || trim($val) === '') return 0;
+        $val = trim($val);
+        if (function_exists('ini_parse_quantity')) {
+            try {
+                return (int) ini_parse_quantity($val);
+            } catch (\Throwable) {}
+        }
+        $last = strtolower($val[strlen($val) - 1]);
+        $num = (int) $val;
+        switch ($last) {
+            case 'g': $num *= 1024 * 1024 * 1024; break;
+            case 'm': $num *= 1024 * 1024; break;
+            case 'k': $num *= 1024; break;
+        }
+        return $num;
+    }
+
     public static function serverLimit(): int
     {
         $limits = [self::MAX_BYTES];
-        $upload = ini_parse_quantity(ini_get('upload_max_filesize'));
-        $post = ini_parse_quantity(ini_get('post_max_size'));
+        $upload = self::parseQuantity(ini_get('upload_max_filesize') ?: '');
+        $post = self::parseQuantity(ini_get('post_max_size') ?: '');
         if ($upload > 0) $limits[] = $upload;
         if ($post > 0) $limits[] = max(1, $post - 65536);
         return min($limits);
