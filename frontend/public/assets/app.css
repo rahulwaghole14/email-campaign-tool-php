@@ -3056,19 +3056,19 @@ body.is-unauthenticated #setup {
 }
 
 .auth-rsl-logo {
-  height: 52px !important;
+  height: 64px !important;
   width: auto !important;
   object-fit: contain !important;
-  filter: none !important;
-  image-rendering: -webkit-optimize-contrast;
+  filter: drop-shadow(0 0 8px rgba(100, 230, 50, 0.55)) !important;
+  display: block !important;
 }
 
 .sidebar-rsl-logo {
-  height: 32px !important;
+  height: 34px !important;
   width: auto !important;
   object-fit: contain !important;
-  filter: drop-shadow(0 0 6px rgba(40, 200, 80, 0.4)) !important;
-  image-rendering: -webkit-optimize-contrast;
+  filter: drop-shadow(0 0 5px rgba(100, 230, 50, 0.45)) !important;
+  display: block !important;
 }
 
 aside .brand {
