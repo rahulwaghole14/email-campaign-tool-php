@@ -56,7 +56,16 @@ $passwordHash = getenv('ADMIN_PASSWORD_HASH') ?: '';
 if ($method !== 'GET' && !hash_equals($_SESSION['csrf'], $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')) respond(['error' => 'Session expired. Refresh the page.'], 403);
 if ($path === '/api/session' && $method === 'GET') {
     $googleNotice = $_SESSION['google_notice'] ?? null; unset($_SESSION['google_notice']);
-    respond(['csrf' => $_SESSION['csrf'], 'authenticated' => !empty($_SESSION['authenticated']), 'configured' => $passwordHash !== '', 'setup_allowed' => $passwordHash === '' && AdminSetup::isLocal($_SERVER), 'google_notice' => $googleNotice]);
+    $adminEmail = getenv('MAIL_FROM_ADDRESS') ?: getenv('SMTP_USERNAME') ?: '';
+    respond([
+        'csrf' => $_SESSION['csrf'],
+        'authenticated' => !empty($_SESSION['authenticated']),
+        'configured' => $passwordHash !== '',
+        'setup_allowed' => $passwordHash === '' && AdminSetup::isLocal($_SERVER),
+        'admin_email' => $adminEmail,
+        'is_local' => AdminSetup::isLocal($_SERVER),
+        'google_notice' => $googleNotice
+    ]);
 }
 if ($path === '/api/setup' && $method === 'POST') {
     if ($passwordHash !== '' || !AdminSetup::isLocal($_SERVER)) respond(['error' => 'Setup is only available locally before an administrator is configured.'], 403);
@@ -80,19 +89,137 @@ if ($path === '/api/login' && $method === 'POST') {
     $_SESSION['authenticated'] = true;
     respond(['ok' => true]);
 }
+if ($path === '/api/password-reset/request' && $method === 'POST') {
+    try {
+        $input = json_decode(file_get_contents('php://input'), true, 8, JSON_THROW_ON_ERROR);
+        $email = strtolower(trim((string) ($input['email'] ?? '')));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException('Please enter a valid email address.');
+        }
+
+        $adminEmail = strtolower(trim((string) (getenv('MAIL_FROM_ADDRESS') ?: getenv('SMTP_USERNAME') ?: '')));
+        if ($adminEmail !== '' && $email !== $adminEmail) {
+            throw new InvalidArgumentException('Email does not match the configured administrator address.');
+        }
+
+        $code = sprintf('%06d', random_int(100000, 999999));
+        $_SESSION['password_reset'] = [
+            'email' => $email,
+            'code_hash' => password_hash($code, PASSWORD_DEFAULT),
+            'expires_at' => time() + 900,
+            'attempts' => 0
+        ];
+
+        $subject = 'RSL Communication Desk — Password Reset Code';
+        $html = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;max-width:540px;margin:20px auto;padding:28px;border:1px solid #e0e6df;border-radius:12px;background:#ffffff;color:#202124;">'
+            . '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">'
+            . '<div style="background:#142e25;color:#ffffff;font-weight:700;font-size:18px;width:36px;height:36px;border-radius:8px;text-align:center;line-height:36px;">R</div>'
+            . '<div style="font-size:14px;font-weight:700;color:#142e25;letter-spacing:1px;">RSL WORKSPACE</div>'
+            . '</div>'
+            . '<h2 style="font-size:22px;color:#202124;margin:0 0 12px;font-weight:600;">Password Reset Request</h2>'
+            . '<p style="color:#5f6368;font-size:14px;line-height:1.6;margin:0 0 20px;">You requested to reset your administrator password for <strong>' . htmlspecialchars($email) . '</strong>.</p>'
+            . '<div style="background:#f4f8f5;border:1px dashed #285c43;padding:20px;text-align:center;border-radius:8px;margin:24px 0;">'
+            . '<div style="font-size:11px;color:#5f6368;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;font-weight:600;">6-Digit Verification Code</div>'
+            . '<span style="font-size:36px;font-weight:700;letter-spacing:8px;color:#142e25;font-family:monospace;">' . $code . '</span>'
+            . '</div>'
+            . '<p style="color:#5f6368;font-size:13px;line-height:1.6;margin:0 0 16px;">This code is valid for <strong>15 minutes</strong>. If you did not make this request, please disregard this email.</p>'
+            . '<hr style="border:0;border-top:1px solid #edf0eb;margin:24px 0;">'
+            . '<div style="font-size:11px;color:#8a968d;text-align:center;">RSL Solution Pvt Ltd · Communication Desk</div>'
+            . '</div>';
+        $text = "RSL Communication Desk - Password Reset Code\n\nYour 6-digit verification code is: $code\n\nValid for 15 minutes. If you did not request this, please ignore.";
+
+        $sent = false;
+        try {
+            $mailer = new \App\Services\Email\Mailer();
+            $sent = $mailer->sendRaw($email, $subject, $html, $text);
+        } catch (\Throwable $e) {
+            if ((getenv('APP_DEBUG') ?: 'false') === 'true' || AdminSetup::isLocal($_SERVER)) {
+                respond(['ok' => true, 'message' => 'Verification code generated.', 'dev_code' => $code]);
+            }
+            throw new RuntimeException('Failed to send reset email. Verify SMTP settings in backend/.env: ' . $e->getMessage());
+        }
+
+        $res = ['ok' => true, 'message' => 'Verification code sent to ' . $email . '.'];
+        if ((getenv('APP_DEBUG') ?: 'false') === 'true' || AdminSetup::isLocal($_SERVER)) {
+            $res['dev_code'] = $code;
+        }
+        respond($res);
+    } catch (InvalidArgumentException|JsonException $e) {
+        respond(['error' => $e->getMessage()], 422);
+    } catch (Throwable $e) {
+        respond(['error' => $e->getMessage() ?: 'Failed to send reset code.'], 500);
+    }
+}
+if ($path === '/api/password-reset/verify' && $method === 'POST') {
+    try {
+        $input = json_decode(file_get_contents('php://input'), true, 8, JSON_THROW_ON_ERROR);
+        $email = strtolower(trim((string) ($input['email'] ?? '')));
+        $code = trim((string) ($input['code'] ?? ''));
+        $newPass = (string) ($input['password'] ?? '');
+        $confirm = (string) ($input['confirmation'] ?? '');
+
+        if ($newPass !== $confirm) throw new InvalidArgumentException('Passwords do not match.');
+        if (mb_strlen($newPass, 'UTF-8') < 6) throw new InvalidArgumentException('Use a password of at least 6 characters.');
+        if (mb_strlen($newPass, 'UTF-8') > 64) throw new InvalidArgumentException('Password cannot exceed 64 characters.');
+
+        $reset = $_SESSION['password_reset'] ?? null;
+        if (!$reset || empty($reset['code_hash'])) {
+            throw new InvalidArgumentException('No active password reset request. Please request a new code.');
+        }
+        if (time() > ($reset['expires_at'] ?? 0)) {
+            unset($_SESSION['password_reset']);
+            throw new InvalidArgumentException('Verification code expired. Please request a new code.');
+        }
+        if (($reset['attempts'] ?? 0) >= 5) {
+            unset($_SESSION['password_reset']);
+            throw new InvalidArgumentException('Too many incorrect attempts. Please request a new code.');
+        }
+        if ($email !== '' && $email !== ($reset['email'] ?? '')) {
+            throw new InvalidArgumentException('Email address mismatch.');
+        }
+        if (!password_verify($code, $reset['code_hash'])) {
+            $_SESSION['password_reset']['attempts'] = ($reset['attempts'] ?? 0) + 1;
+            throw new InvalidArgumentException('Invalid 6-digit verification code.');
+        }
+
+        $envFile = dirname(__DIR__) . '/.env';
+        $contents = file_get_contents($envFile);
+        $newHash = password_hash($newPass, PASSWORD_DEFAULT);
+        if (preg_match('/^ADMIN_PASSWORD_HASH=/m', $contents)) {
+            $updated = preg_replace('/^ADMIN_PASSWORD_HASH=.*$/m', 'ADMIN_PASSWORD_HASH=' . $newHash, $contents);
+        } else {
+            $updated = $contents . "\nADMIN_PASSWORD_HASH=" . $newHash . "\n";
+        }
+        file_put_contents($envFile, $updated);
+
+        unset($_SESSION['password_reset']);
+        session_regenerate_id(true);
+        $_SESSION['authenticated'] = true;
+        respond(['ok' => true]);
+    } catch (InvalidArgumentException|JsonException $e) {
+        respond(['error' => $e->getMessage()], 422);
+    } catch (Throwable $e) {
+        respond(['error' => 'Failed to reset administrator password: ' . $e->getMessage()], 500);
+    }
+}
 if ($path === '/api/reset-password' && $method === 'POST') {
-    if (!AdminSetup::isLocal($_SERVER)) respond(['error' => 'Password reset is only available locally on this computer.'], 403);
+    if (!AdminSetup::isLocal($_SERVER)) respond(['error' => 'Local password reset is only available on this computer. Use email verification instead.'], 403);
     try {
         $input = json_decode(file_get_contents('php://input'), true, 8, JSON_THROW_ON_ERROR);
         $newPass = (string) ($input['password'] ?? '');
         $confirm = (string) ($input['confirmation'] ?? '');
         if ($newPass !== $confirm) throw new InvalidArgumentException('Passwords do not match.');
-        if (mb_strlen($newPass, 'UTF-8') < 6 || mb_strlen($newPass, 'UTF-8') > 8) throw new InvalidArgumentException('Use a password between 6 and 8 characters.');
+        if (mb_strlen($newPass, 'UTF-8') < 6) throw new InvalidArgumentException('Use a password of at least 6 characters.');
+        if (mb_strlen($newPass, 'UTF-8') > 64) throw new InvalidArgumentException('Password cannot exceed 64 characters.');
 
         $envFile = dirname(__DIR__) . '/.env';
         $contents = file_get_contents($envFile);
         $newHash = password_hash($newPass, PASSWORD_DEFAULT);
-        $updated = preg_replace('/^ADMIN_PASSWORD_HASH=.*$/m', 'ADMIN_PASSWORD_HASH=' . $newHash, $contents);
+        if (preg_match('/^ADMIN_PASSWORD_HASH=/m', $contents)) {
+            $updated = preg_replace('/^ADMIN_PASSWORD_HASH=.*$/m', 'ADMIN_PASSWORD_HASH=' . $newHash, $contents);
+        } else {
+            $updated = $contents . "\nADMIN_PASSWORD_HASH=" . $newHash . "\n";
+        }
         file_put_contents($envFile, $updated);
 
         session_regenerate_id(true);

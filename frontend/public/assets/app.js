@@ -883,16 +883,24 @@ $('#overview-sync-btn')?.addEventListener('click', async () => {
     if (label) label.textContent = 'Sync Inbox';
   }
 });
+let currentSession = null;
+
 async function init() {
   try {
     const session = await api('session');
+    currentSession = session;
     csrf = session.csrf;
     $('#setup').hidden = !session.setup_allowed || session.authenticated;
     $('#login').hidden = session.authenticated || session.setup_allowed;
-    $('#logout').hidden = !session.authenticated;
-    $('#setup-help').hidden = session.configured;
 
     if (session.authenticated) {
+      document.body.classList.add('is-authenticated');
+      document.body.classList.remove('is-unauthenticated');
+      if ($('#logout')) {
+        $('#logout').hidden = false;
+        $('#logout').style.display = 'inline-flex';
+      }
+
       const activeHash = location.hash ? location.hash.replace(/^#/, '') : '';
       const savedView = activeHash || localStorage.getItem('rsl_active_view') || 'overview';
 
@@ -919,6 +927,12 @@ async function init() {
       // Fetch dashboard statistics in background without blocking UI
       load().catch(() => {});
     } else {
+      document.body.classList.add('is-unauthenticated');
+      document.body.classList.remove('is-authenticated');
+      if ($('#logout')) {
+        $('#logout').hidden = true;
+        $('#logout').style.display = 'none';
+      }
       $('#app').hidden = true;
     }
 
@@ -930,32 +944,120 @@ async function init() {
 $('#setup-form').addEventListener('submit', async event => { event.preventDefault(); const button = event.target.querySelector('.primary'); button.disabled = true; try { await api('setup', {method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(event.target)))}); event.target.reset(); await init(); notice('Administrator created. You are signed in.'); } catch(e) {notice(e.message,true);} finally {button.disabled = false;} });
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => view(button.dataset.view)));
 $('#login-form').addEventListener('submit', async event => { event.preventDefault(); const button = event.target.querySelector('.primary'); button.disabled = true; try { await api('login', {method:'POST', body:JSON.stringify({password:new FormData(event.target).get('password')})}); event.target.reset(); $('#notice').hidden = true; await init(); } catch(e) {notice(e.message, true);} finally {button.disabled = false;} });
+
+// Password Reset Modal Handlers
 $('#forgot-password')?.addEventListener('click', () => {
-  $('#reset-error').hidden = true;
-  $('#reset-form').reset();
+  if ($('#reset-step-1')) $('#reset-step-1').hidden = false;
+  if ($('#reset-step-2')) $('#reset-step-2').hidden = true;
+  if ($('#reset-step-local')) $('#reset-step-local').hidden = true;
+  if ($('#reset-req-error')) $('#reset-req-error').hidden = true;
+  if ($('#reset-verify-error')) $('#reset-verify-error').hidden = true;
+  if ($('#reset-local-error')) $('#reset-local-error').hidden = true;
+  if ($('#reset-req-email') && currentSession?.admin_email) {
+    $('#reset-req-email').value = currentSession.admin_email;
+  }
+  if ($('#reset-local-bypass-wrap')) {
+    $('#reset-local-bypass-wrap').hidden = !currentSession?.is_local;
+  }
   $('#reset-dialog').showModal();
 });
+
 $('#close-reset')?.addEventListener('click', () => $('#reset-dialog').close());
-$('#reset-form')?.addEventListener('submit', async event => {
+
+$('#reset-request-form')?.addEventListener('submit', async event => {
   event.preventDefault();
-  const button = event.target.querySelector('.primary');
-  button.disabled = true;
-  $('#reset-error').hidden = true;
+  const btn = $('#reset-req-btn');
+  btn.disabled = true;
+  $('#reset-req-error').hidden = true;
+  const email = $('#reset-req-email').value.trim();
   try {
-    const input = Object.fromEntries(new FormData(event.target));
-    await api('reset-password', {method:'POST', body:JSON.stringify(input)});
+    const res = await api('password-reset/request', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+    $('#reset-step-1').hidden = true;
+    $('#reset-step-2').hidden = false;
+    $('#reset-sent-notice').textContent = res.message || `A 6-digit code was sent to ${email}.`;
+    if (res.dev_code && $('#reset-verify-code')) {
+      $('#reset-verify-code').value = res.dev_code;
+    }
+    $('#reset-verify-code')?.focus();
+  } catch (e) {
+    $('#reset-req-error').textContent = e.message;
+    $('#reset-req-error').hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#reset-back-to-step1')?.addEventListener('click', () => {
+  $('#reset-step-1').hidden = false;
+  $('#reset-step-2').hidden = true;
+  $('#reset-step-local').hidden = true;
+});
+
+$('#reset-verify-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const btn = $('#reset-verify-btn');
+  btn.disabled = true;
+  $('#reset-verify-error').hidden = true;
+  const email = $('#reset-req-email').value.trim();
+  const code = $('#reset-verify-code').value.trim();
+  const password = $('#reset-verify-password').value;
+  const confirmation = $('#reset-verify-confirm').value;
+  try {
+    await api('password-reset/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, code, password, confirmation })
+    });
+    $('#reset-dialog').close();
+    event.target.reset();
+    $('#notice').hidden = true;
+    await init();
+    notice('Password updated successfully. You are signed in.');
+  } catch (e) {
+    $('#reset-verify-error').textContent = e.message;
+    $('#reset-verify-error').hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#reset-local-bypass-btn')?.addEventListener('click', () => {
+  $('#reset-step-1').hidden = true;
+  $('#reset-step-local').hidden = false;
+});
+
+$('#reset-local-back')?.addEventListener('click', () => {
+  $('#reset-step-1').hidden = false;
+  $('#reset-step-local').hidden = true;
+});
+
+$('#reset-local-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const btn = event.target.querySelector('.primary');
+  btn.disabled = true;
+  $('#reset-local-error').hidden = true;
+  const password = $('#reset-local-password').value;
+  const confirmation = $('#reset-local-confirm').value;
+  try {
+    await api('reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ password, confirmation })
+    });
     $('#reset-dialog').close();
     event.target.reset();
     $('#notice').hidden = true;
     await init();
     notice('Password updated. You are signed in.');
-  } catch(e) {
-    $('#reset-error').textContent = e.message;
-    $('#reset-error').hidden = false;
+  } catch (e) {
+    $('#reset-local-error').textContent = e.message;
+    $('#reset-local-error').hidden = false;
   } finally {
-    button.disabled = false;
+    btn.disabled = false;
   }
 });
+
 $('#logout').addEventListener('click', async () => { try {await api('logout', {method:'POST'}); location.reload();} catch(e) {notice(e.message,true);} });
 
 let currentAttachments = [];

@@ -2977,5 +2977,211 @@ header #logout:hover {
   .dash-analytics-grid, .dash-bottom-grid { grid-template-columns: 1fr !important; }
 }
 
+/* ====================================================================
+   AUTHENTICATION & LOGIN CENTERING POLISH
+   ==================================================================== */
+
+/* Hard display override for hidden elements (including high-specificity ID rules) */
+#logout[hidden],
+header #logout[hidden],
+.google-status-pill[hidden],
+.batch-toolbar[hidden],
+[hidden] {
+  display: none !important;
+}
+
+/* Unauthenticated state: completely hide dashboard shell & center login */
+body.is-unauthenticated {
+  background: #f3f6f4 !important;
+  min-height: 100vh !important;
+  margin: 0 !important;
+}
+
+body.is-unauthenticated aside {
+  display: none !important;
+}
+
+body.is-unauthenticated header {
+  display: none !important;
+}
+
+body.is-unauthenticated footer {
+  display: none !important;
+}
+
+body.is-unauthenticated main {
+  margin-left: 0 !important;
+  max-width: 100% !important;
+  min-height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 40px 20px !important;
+  background: radial-gradient(ellipse at 50% 25%, #ffffff 0%, #edf2ee 100%) !important;
+}
+
+body.is-unauthenticated #login,
+body.is-unauthenticated #setup {
+  width: 100% !important;
+  max-width: 440px !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+  animation: authFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes authFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.auth-box {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+.auth-brand-badge {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  margin-bottom: 24px !important;
+}
+
+.auth-logo-icon {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 12px !important;
+  background: #142e25 !important;
+  color: #ffffff !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 6px 16px rgba(20, 46, 37, 0.2) !important;
+  letter-spacing: -0.5px !important;
+}
+
+.auth-brand-text {
+  display: flex !important;
+  flex-direction: column !important;
+  text-align: left !important;
+}
+
+.auth-brand-name {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #142e25 !important;
+  letter-spacing: 1.8px !important;
+}
+
+.auth-brand-sub {
+  font-size: 11px !important;
+  letter-spacing: 1.4px !important;
+  color: #52665a !important;
+  text-transform: uppercase !important;
+  font-weight: 500 !important;
+}
+
+.login-card {
+  width: 100% !important;
+  max-width: 440px !important;
+  margin: 0 !important;
+  padding: 36px 32px !important;
+  border-radius: 16px !important;
+  border: 1px solid #dce4de !important;
+  box-shadow: 0 12px 36px rgba(20, 46, 37, 0.08), 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+  background: #ffffff !important;
+}
+
+.login-card-head {
+  margin-bottom: 24px !important;
+  text-align: left !important;
+}
+
+.login-title {
+  font-size: 24px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.5px !important;
+  color: #142e25 !important;
+  margin: 8px 0 6px !important;
+}
+
+.login-desc {
+  font-size: 13.5px !important;
+  color: #5f6368 !important;
+  margin: 0 !important;
+  line-height: 1.5 !important;
+}
+
+.login-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  margin-top: 24px !important;
+}
+
+.login-actions .primary {
+  flex: 1 !important;
+  min-height: 44px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+}
+
+.login-actions .quiet {
+  min-height: 44px !important;
+  border-radius: 8px !important;
+  color: #5f6368 !important;
+}
+
+.auth-foot-note {
+  margin-top: 24px !important;
+  font-size: 12px !important;
+  color: #758179 !important;
+  text-align: center !important;
+}
+
+/* Reset Dialog Polish */
+#reset-dialog {
+  width: 100% !important;
+  max-width: 480px !important;
+  padding: 28px !important;
+  border-radius: 16px !important;
+  border: 1px solid #dce4de !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15) !important;
+}
+
+#reset-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.45) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+.reset-dialog-wrap .queue-header {
+  margin-bottom: 16px !important;
+}
+
+.email-detail-error {
+  background: #fce8e6 !important;
+  color: #c5221f !important;
+  border: 1px solid #fad2cf !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  font-size: 13px !important;
+  margin: 14px 0 !important;
+  line-height: 1.4 !important;
+}
+
+
 
 

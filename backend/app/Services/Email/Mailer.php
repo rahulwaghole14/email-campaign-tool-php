@@ -90,6 +90,25 @@ final class Mailer
         return $results;
     }
 
+    /**
+     * Send a transactional / administrative email directly (e.g. password reset OTP).
+     */
+    public function sendRaw(string $recipient, string $subject, string $htmlBody, string $textBody = ''): bool
+    {
+        if ((getenv('MAIL_DRY_RUN') ?: 'true') !== 'false') {
+            return true;
+        }
+        $mail = $this->configuredMailer();
+        $mail->addAddress($recipient);
+        $mail->Subject = $subject;
+        $mail->isHTML(true);
+        $mail->Body = $htmlBody;
+        if ($textBody !== '') {
+            $mail->AltBody = $textBody;
+        }
+        return (bool) $mail->send();
+    }
+
     /** Connect and authenticate only; never submit a message or change dry-run mode. */
     public function checkConnection(): void
     {
