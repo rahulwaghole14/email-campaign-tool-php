@@ -3076,6 +3076,7 @@ body.is-unauthenticated #setup {
   width: auto !important;
   object-fit: contain !important;
   display: block !important;
+  background: transparent !important;
 }
 
 .sidebar-rsl-logo {
@@ -3083,6 +3084,7 @@ body.is-unauthenticated #setup {
   width: auto !important;
   object-fit: contain !important;
   display: block !important;
+  background: transparent !important;
 }
 
 aside .brand {
