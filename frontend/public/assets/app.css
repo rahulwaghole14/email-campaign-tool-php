@@ -3122,27 +3122,91 @@ body.is-unauthenticated #setup {
   line-height: 1.5 !important;
 }
 
-.login-actions {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 12px !important;
-  margin-top: 24px !important;
+.login-card-head .eyebrow {
+  display: inline-block !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 1.6px !important;
+  color: #1e4d38 !important;
+  background: #edf5f0 !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  margin-bottom: 8px !important;
 }
 
-.login-actions .primary {
-  flex: 1 !important;
-  min-height: 44px !important;
-  font-size: 14px !important;
+.auth-text-link {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  color: #285c43 !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  transition: color .15s ease !important;
+}
+
+.auth-text-link:hover {
+  color: #142e25 !important;
+  text-decoration: underline !important;
+}
+
+.auth-submit-btn {
+  width: 100% !important;
+  min-height: 48px !important;
+  font-size: 14.5px !important;
   font-weight: 600 !important;
   justify-content: center !important;
-  border-radius: 8px !important;
+  border-radius: 9px !important;
+  background: #1e4d38 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(30, 77, 56, 0.2) !important;
+  margin-top: 22px !important;
+  transition: all .2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
-.login-actions .quiet {
-  min-height: 44px !important;
-  border-radius: 8px !important;
-  color: #5f6368 !important;
+.auth-submit-btn:hover {
+  background: #143526 !important;
+  box-shadow: 0 6px 18px rgba(20, 53, 38, 0.3) !important;
+  transform: translateY(-1px);
+}
+
+.auth-submit-btn:active {
+  transform: translateY(0);
+}
+
+.login-card .password-field {
+  margin-top: 0 !important;
+}
+
+.login-card .password-field input {
+  height: 48px !important;
+  border-radius: 9px !important;
+  border: 1px solid #cfd8d2 !important;
+  background: #ffffff !important;
+  padding: 0 46px 0 14px !important;
+  font-size: 15px !important;
+  color: #142e25 !important;
+  transition: all .15s ease !important;
+}
+
+.login-card .password-field input:focus {
+  border-color: #285c43 !important;
+  box-shadow: 0 0 0 3px rgba(40, 92, 67, 0.15) !important;
+  background: #ffffff !important;
+}
+
+.login-card .password-toggle {
+  width: 36px !important;
+  height: 36px !important;
+  right: 6px !important;
+  border-radius: 6px !important;
+  color: #718078 !important;
+}
+
+.login-card .password-toggle:hover {
+  background: #edf3ee !important;
+  color: #142e25 !important;
 }
 
 .auth-foot-note {
