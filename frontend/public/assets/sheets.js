@@ -489,7 +489,14 @@
       const queue = element('button', 'Send email', 'sheet-btn-action btn-send-single');
       queue.disabled = !validToSend;
       queue.addEventListener('click', () => busy(queue, async () => {
-        if (!confirm(`Send this email now to ${cleanEmail}?\nSubject: ${row.values.subject}`)) return;
+        const confirmed = await confirmSendDialog({
+          title: 'Send 1 Email via SMTP',
+          desc: 'This email will be dispatched immediately to the recipient.',
+          recipient: cleanEmail,
+          subject: row.values.subject || '(No subject)',
+          count: 1
+        });
+        if (!confirmed) return;
         const data = await post(`sheets/${source.id}/send`, {record_id: row.record_id, version: row.version});
         await openSource(source.id, true);
         await load();
@@ -549,13 +556,107 @@
     updateBatchBar();
   });
 
+  function confirmSendDialog({ title, desc, recipient, subject, count }) {
+    return new Promise(resolve => {
+      const dialog = $('#send-confirm-dialog');
+      const titleEl = $('#send-confirm-title');
+      const descEl = $('#send-confirm-desc');
+      const recipEl = $('#send-confirm-recip');
+      const subjEl = $('#send-confirm-subj');
+      const batchInfo = $('#send-confirm-batch-info');
+      const countEl = $('#send-confirm-count');
+      const okBtn = $('#send-confirm-ok-btn');
+      const cancelBtn = $('#send-confirm-cancel-btn');
+
+      if (!dialog || typeof dialog.showModal !== 'function') {
+        resolve(confirm(desc || 'Send email now via Hostinger SMTP?'));
+        return;
+      }
+
+      if (titleEl) titleEl.textContent = title || 'Confirm Email Dispatch';
+      if (descEl) descEl.textContent = desc || 'Ready to send via Hostinger SMTP.';
+
+      if (recipient) {
+        recipEl.parentElement.hidden = false;
+        recipEl.textContent = recipient;
+      } else {
+        recipEl.parentElement.hidden = true;
+      }
+
+      if (subject) {
+        subjEl.parentElement.hidden = false;
+        subjEl.textContent = subject;
+      } else {
+        subjEl.parentElement.hidden = true;
+      }
+
+      if (count && count > 1) {
+        batchInfo.hidden = false;
+        countEl.textContent = `${count} verified records`;
+      } else {
+        batchInfo.hidden = true;
+      }
+
+      let settled = false;
+      const cleanup = () => {
+        okBtn?.removeEventListener('click', onOk);
+        cancelBtn?.removeEventListener('click', onCancel);
+        dialog.removeEventListener('close', onClose);
+      };
+
+      const onOk = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        dialog.close();
+        resolve(true);
+      };
+
+      const onCancel = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        dialog.close();
+        resolve(false);
+      };
+
+      const onClose = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(false);
+      };
+
+      okBtn?.addEventListener('click', onOk, { once: true });
+      cancelBtn?.addEventListener('click', onCancel, { once: true });
+      dialog.addEventListener('close', onClose, { once: true });
+
+      try {
+        dialog.showModal();
+      } catch (e) {
+        resolve(confirm(desc || 'Send email now via Hostinger SMTP?'));
+      }
+    });
+  }
+
   // Live Batch / Bulk send handler with real-time modal progress & counter
   let batchCancelRequested = false;
 
   async function performBatchSend(ids) {
     if (!ids || !ids.length) return;
     const total = ids.length;
-    if (!confirm(`Send ${total} email${total === 1 ? '' : 's'} now directly via Hostinger SMTP?`)) return;
+    const isSingle = total === 1;
+    const targetRow = isSingle ? records?.find(r => r.record_id === ids[0]) : null;
+    const confirmed = await confirmSendDialog({
+      title: isSingle ? 'Send 1 Email via SMTP' : `Send ${total} Emails via SMTP`,
+      desc: isSingle
+        ? 'Send this email now directly to the recipient via Hostinger SMTP.'
+        : `Ready to dispatch ${total} verified emails directly via persistent Hostinger SMTP connection.`,
+      count: total,
+      recipient: isSingle ? (targetRow?.values?.email || '1 recipient') : `${total} ready recipients`,
+      subject: isSingle ? (targetRow?.values?.subject || 'From sheet template') : `Batch dispatch of ${total} records`
+    });
+    if (!confirmed) return;
 
     const modal = $('#batch-progress-dialog');
     const titleEl = $('#batch-progress-title');
