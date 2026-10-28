@@ -3088,6 +3088,57 @@ aside .brand > span {
   font-weight: 600 !important;
 }
 
+/* Sidebar Footer & Bottom-Left Signout */
+.sidebar-foot {
+  margin-top: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  padding: 16px 4px 10px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.sidebar-logout,
+#logout.sidebar-logout {
+  width: 100% !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 0 12px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: #c5d5cc !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all .18s ease !important;
+  box-sizing: border-box !important;
+}
+
+.sidebar-logout .icon {
+  width: 16px !important;
+  height: 16px !important;
+  stroke: currentColor !important;
+  flex-shrink: 0 !important;
+}
+
+.sidebar-logout:hover,
+#logout.sidebar-logout:hover {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  color: #ff9e99 !important;
+}
+
+.sidebar-platform-label {
+  font-size: 11px !important;
+  color: #728c80 !important;
+  letter-spacing: 0.3px !important;
+  padding-left: 2px !important;
+}
+
 .auth-brand-text {
   display: flex !important;
   flex-direction: column !important;

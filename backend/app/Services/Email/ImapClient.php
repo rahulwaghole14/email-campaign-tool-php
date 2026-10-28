@@ -527,7 +527,13 @@ final class ImapClient
                 $charset = 'UTF-8';
                 if (preg_match('/charset=["\']?([a-zA-Z0-9\-]+)/i', $pHeader ?: $contentType, $cm)) {
                     $candidate = strtoupper(trim($cm[1]));
-                    if (in_array($candidate, mb_list_encodings(), true) || @mb_encoding_aliases($candidate) !== false) {
+                    $isValid = false;
+                    try {
+                        $isValid = in_array($candidate, mb_list_encodings(), true) || mb_encoding_aliases($candidate) !== false;
+                    } catch (\Throwable) {
+                        $isValid = false;
+                    }
+                    if ($isValid) {
                         $charset = $candidate;
                     }
                 }
