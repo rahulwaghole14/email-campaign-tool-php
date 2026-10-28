@@ -26,6 +26,7 @@ function view(name) {
     if (el.dataset.view === activeNav) el.setAttribute('aria-current', 'page');
     else el.removeAttribute('aria-current');
   });
+  $('.sidebar-compose-btn')?.classList.toggle('active', activeNav === 'compose');
 
   if (name !== 'thread-view') {
     try {
