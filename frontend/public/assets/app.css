@@ -3041,6 +3041,10 @@ body.is-unauthenticated #setup {
   }
 }
 
+/* =============================================
+   PUBLICATION-QUALITY LOGIN POLISH v35
+   ============================================= */
+
 .auth-box {
   display: flex !important;
   flex-direction: column !important;
@@ -3051,8 +3055,8 @@ body.is-unauthenticated #setup {
 .auth-brand-badge {
   display: flex !important;
   align-items: center !important;
-  gap: 16px !important;
-  margin-bottom: 26px !important;
+  gap: 18px !important;
+  margin-bottom: 28px !important;
 }
 
 .auth-rsl-logo {
@@ -3094,30 +3098,36 @@ aside .brand > span {
   font-size: 15px !important;
   font-weight: 700 !important;
   color: #142e25 !important;
-  letter-spacing: 1.8px !important;
+  letter-spacing: 2px !important;
+  line-height: 1.2 !important;
 }
 
 .auth-brand-sub {
-  font-size: 11px !important;
-  letter-spacing: 1.4px !important;
-  color: #52665a !important;
+  font-size: 10.5px !important;
+  letter-spacing: 1.6px !important;
+  color: #6b7f74 !important;
   text-transform: uppercase !important;
   font-weight: 500 !important;
+  margin-top: 2px !important;
 }
 
+/* === LOGIN CARD === */
 .login-card {
   width: 100% !important;
-  max-width: 440px !important;
+  max-width: 460px !important;
   margin: 0 !important;
-  padding: 36px 32px !important;
-  border-radius: 16px !important;
-  border: 1px solid rgba(20, 46, 37, 0.1) !important;
-  box-shadow: 0 20px 45px -10px rgba(20, 46, 37, 0.08), 0 0 0 1px rgba(20, 46, 37, 0.04) !important;
+  padding: 40px 36px 36px !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(20, 46, 37, 0.09) !important;
+  box-shadow:
+    0 2px 4px rgba(20, 46, 37, 0.04),
+    0 8px 24px rgba(20, 46, 37, 0.07),
+    0 24px 48px rgba(20, 46, 37, 0.06) !important;
   background: #ffffff !important;
 }
 
 .login-card input:-webkit-autofill,
-.login-card input:-webkit-autofill:hover, 
+.login-card input:-webkit-autofill:hover,
 .login-card input:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
   -webkit-text-fill-color: #142e25 !important;
@@ -3125,37 +3135,45 @@ aside .brand > span {
 }
 
 .login-card-head {
-  margin-bottom: 24px !important;
+  margin-bottom: 26px !important;
   text-align: left !important;
 }
 
 .login-title {
-  font-size: 24px !important;
-  font-weight: 600 !important;
-  letter-spacing: -0.5px !important;
-  color: #142e25 !important;
-  margin: 8px 0 6px !important;
+  font-size: 26px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.6px !important;
+  color: #0f2219 !important;
+  margin: 10px 0 8px !important;
+  line-height: 1.2 !important;
 }
 
-.login-desc {
+/* Fix: force subtitle to neutral gray, override any .muted color */
+.login-desc,
+.login-card .login-desc,
+p.login-desc {
   font-size: 13.5px !important;
-  color: #5f6368 !important;
+  color: #6b7f74 !important;
   margin: 0 !important;
-  line-height: 1.5 !important;
+  line-height: 1.55 !important;
+  font-weight: 400 !important;
 }
 
 .login-card-head .eyebrow {
-  display: inline-block !important;
+  display: inline-flex !important;
+  align-items: center !important;
   font-size: 10px !important;
   font-weight: 700 !important;
-  letter-spacing: 1.6px !important;
+  letter-spacing: 1.8px !important;
   color: #1e4d38 !important;
-  background: #edf5f0 !important;
-  padding: 4px 8px !important;
-  border-radius: 4px !important;
-  margin-bottom: 8px !important;
+  background: linear-gradient(135deg, #eaf5ee, #d8eee0) !important;
+  padding: 4px 10px !important;
+  border-radius: 5px !important;
+  border: 1px solid rgba(30, 77, 56, 0.12) !important;
+  margin-bottom: 10px !important;
 }
 
+/* === PASSWORD LABEL ROW === */
 .auth-text-link {
   background: transparent !important;
   border: none !important;
@@ -3173,17 +3191,21 @@ aside .brand > span {
   text-decoration: underline !important;
 }
 
+/* === INPUT FIELD — Publication Polish === */
 .auth-submit-btn {
   width: 100% !important;
-  min-height: 48px !important;
-  font-size: 14.5px !important;
+  min-height: 50px !important;
+  font-size: 15px !important;
   font-weight: 600 !important;
+  letter-spacing: 0.2px !important;
   justify-content: center !important;
-  border-radius: 9px !important;
-  background: #1e4d38 !important;
+  border-radius: 10px !important;
+  background: linear-gradient(160deg, #25593f 0%, #1a3f2c 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(30, 77, 56, 0.2) !important;
-  margin-top: 20px !important;
+  box-shadow:
+    0 1px 2px rgba(30, 77, 56, 0.15),
+    0 4px 14px rgba(30, 77, 56, 0.25) !important;
+  margin-top: 22px !important;
   transition: all .2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
@@ -3192,42 +3214,57 @@ aside .brand > span {
 }
 
 .auth-submit-btn:hover {
-  background: #143526 !important;
-  box-shadow: 0 6px 18px rgba(20, 53, 38, 0.3) !important;
-  transform: translateY(-1px);
+  background: linear-gradient(160deg, #1d4a33 0%, #142e25 100%) !important;
+  box-shadow:
+    0 2px 4px rgba(20, 53, 38, 0.2),
+    0 8px 24px rgba(20, 53, 38, 0.32) !important;
+  transform: translateY(-1px) !important;
 }
 
 .auth-submit-btn:active {
-  transform: translateY(0);
+  transform: translateY(0) !important;
+  box-shadow: 0 2px 6px rgba(20, 53, 38, 0.2) !important;
 }
 
 .login-card .password-field {
   margin-top: 0 !important;
 }
 
+/* === Password input — polished === */
 .login-card .password-field input {
-  height: 48px !important;
-  border-radius: 9px !important;
-  border: 1px solid #cfd8d2 !important;
-  background: #ffffff !important;
-  padding: 0 46px 0 14px !important;
+  height: 50px !important;
+  border-radius: 10px !important;
+  border: 1.5px solid #d0dbd5 !important;
+  background: #fafcfb !important;
+  padding: 0 50px 0 16px !important;
   font-size: 15px !important;
   color: #142e25 !important;
-  transition: all .15s ease !important;
+  transition: all .18s ease !important;
+  width: 100% !important;
+  box-shadow: 0 1px 3px rgba(20, 46, 37, 0.04) inset !important;
 }
 
 .login-card .password-field input:focus {
-  border-color: #285c43 !important;
-  box-shadow: 0 0 0 3px rgba(40, 92, 67, 0.15) !important;
+  border-color: #25593f !important;
   background: #ffffff !important;
+  box-shadow:
+    0 0 0 3.5px rgba(37, 89, 63, 0.13),
+    0 1px 3px rgba(20, 46, 37, 0.04) inset !important;
+  outline: none !important;
+}
+
+.login-card .password-field input::placeholder {
+  color: #b0bdb7 !important;
+  font-size: 18px !important;
+  letter-spacing: 2px !important;
 }
 
 .login-card .password-toggle {
-  width: 36px !important;
-  height: 36px !important;
+  width: 38px !important;
+  height: 38px !important;
   right: 6px !important;
-  border-radius: 6px !important;
-  color: #718078 !important;
+  border-radius: 7px !important;
+  color: #90a09a !important;
 }
 
 .login-card .password-toggle:hover {
@@ -3235,11 +3272,13 @@ aside .brand > span {
   color: #142e25 !important;
 }
 
+/* === Footer note === */
 .auth-foot-note {
-  margin-top: 24px !important;
-  font-size: 12px !important;
-  color: #758179 !important;
+  margin-top: 22px !important;
+  font-size: 11.5px !important;
+  color: #8a9e95 !important;
   text-align: center !important;
+  letter-spacing: 0.2px !important;
 }
 
 /* Reset Dialog Polish */

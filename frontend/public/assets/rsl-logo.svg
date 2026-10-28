@@ -14,10 +14,10 @@
       <stop offset="100%" stop-color="#2a8a05" stop-opacity="0"/>
     </linearGradient>
 
-    <!-- Soft outer glow for the whole RSL group -->
-    <filter id="glow" x="-18%" y="-18%" width="136%" height="136%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="5"   result="b2"/>
+    <!-- Subtle outer glow — sharp letters, light halo only -->
+    <filter id="glow" x="-12%" y="-12%" width="124%" height="124%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="b1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b2"/>
       <feMerge>
         <feMergeNode in="b2"/>
         <feMergeNode in="b1"/>
@@ -99,3 +99,4 @@
     >RSL</text>
   </g>
 </svg>
+
