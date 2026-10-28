@@ -3072,10 +3072,9 @@ body.is-unauthenticated #setup {
 }
 
 .auth-rsl-logo {
-  height: 64px !important;
+  height: 56px !important;
   width: auto !important;
   object-fit: contain !important;
-  filter: drop-shadow(0 0 8px rgba(100, 230, 50, 0.55)) !important;
   display: block !important;
 }
 
@@ -3083,7 +3082,6 @@ body.is-unauthenticated #setup {
   height: 34px !important;
   width: auto !important;
   object-fit: contain !important;
-  filter: drop-shadow(0 0 5px rgba(100, 230, 50, 0.45)) !important;
   display: block !important;
 }
 
