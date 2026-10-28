@@ -3181,8 +3181,12 @@ aside .brand > span {
   background: #1e4d38 !important;
   color: #ffffff !important;
   box-shadow: 0 4px 12px rgba(30, 77, 56, 0.2) !important;
-  margin-top: 22px !important;
+  margin-top: 20px !important;
   transition: all .2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.login-card form label {
+  margin-bottom: 0 !important;
 }
 
 .auth-submit-btn:hover {
