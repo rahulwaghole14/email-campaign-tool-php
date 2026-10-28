@@ -3009,6 +3009,11 @@ body.is-unauthenticated footer {
   display: none !important;
 }
 
+body.is-authenticated main {
+  padding-top: 28px !important;
+  padding-bottom: 40px !important;
+}
+
 body.is-unauthenticated main {
   margin-left: 0 !important;
   max-width: 100% !important;
