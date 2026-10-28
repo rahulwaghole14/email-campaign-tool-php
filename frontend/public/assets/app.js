@@ -1203,7 +1203,6 @@ $('#compose-form').addEventListener('submit', async event => {
     event.target.reset();
     currentAttachments = [];
     renderComposeAttachments();
-    resetRecipientStatus();
 
     const titleEl = $('#compose-title');
     const submitLabel = $('#compose-submit-label');
@@ -1224,7 +1223,6 @@ $('.compose-discard-btn')?.addEventListener('click', () => {
   $('#compose-form').reset();
   currentAttachments = [];
   renderComposeAttachments();
-  resetRecipientStatus();
   notice('Draft discarded.');
   view('inbox');
 });
@@ -1251,110 +1249,9 @@ document.querySelectorAll('[data-recipient]').forEach(button => {
   $('#compose-form').addEventListener('reset', () => {
     button.setAttribute('aria-expanded', 'false'); field.hidden = true; input.disabled = true;
     currentAttachments = []; renderComposeAttachments();
-    resetRecipientStatus();
   });
 });
 
-// Live recipient email & MX domain validation in Compose
-const composeToInput = $('#compose-to');
-const composeRecipientStatus = $('#compose-recipient-status');
-let recipientValidationTimer = null;
-let recipientValidationController = null;
-
-function resetRecipientStatus() {
-  if (recipientValidationTimer) {
-    clearTimeout(recipientValidationTimer);
-    recipientValidationTimer = null;
-  }
-  if (recipientValidationController) {
-    recipientValidationController.abort();
-    recipientValidationController = null;
-  }
-  if (composeRecipientStatus) {
-    composeRecipientStatus.hidden = true;
-    composeRecipientStatus.textContent = '';
-    composeRecipientStatus.className = 'compose-recipient-status';
-    composeRecipientStatus.removeAttribute('title');
-  }
-}
-
-async function validateComposeRecipient(rawEmail) {
-  const email = (rawEmail || '').trim();
-  if (!email || !email.includes('@')) {
-    resetRecipientStatus();
-    return;
-  }
-
-  const parts = email.split('@');
-  const domain = parts[parts.length - 1] || '';
-
-  // Wait until user has at least started a domain with a dot, e.g. "user@domain.com"
-  if (!domain.includes('.') || domain.split('.').pop().length < 2) {
-    resetRecipientStatus();
-    return;
-  }
-
-  if (recipientValidationController) {
-    recipientValidationController.abort();
-  }
-  recipientValidationController = new AbortController();
-
-  if (composeRecipientStatus) {
-    composeRecipientStatus.hidden = false;
-    composeRecipientStatus.className = 'compose-recipient-status is-checking';
-    composeRecipientStatus.textContent = 'Verifying domain…';
-    composeRecipientStatus.title = 'Checking MX DNS records…';
-  }
-
-  try {
-    const res = await fetch(`/api/validate-recipient?email=${encodeURIComponent(email)}`, {
-      signal: recipientValidationController.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!res.ok && res.status !== 400) {
-      throw new Error('Validation request failed');
-    }
-    const data = await res.json();
-    if (!composeRecipientStatus || composeToInput?.value.trim() !== email) return;
-
-    if (data.valid) {
-      composeRecipientStatus.hidden = false;
-      composeRecipientStatus.className = 'compose-recipient-status is-valid';
-      composeRecipientStatus.textContent = `✓ Mail server active (@${data.domain})`;
-      composeRecipientStatus.title = `MX records verified on ${data.domain}`;
-    } else {
-      composeRecipientStatus.hidden = false;
-      composeRecipientStatus.className = 'compose-recipient-status is-invalid';
-      composeRecipientStatus.textContent = `⚠️ ${data.error || 'Invalid email or domain'}`;
-      composeRecipientStatus.title = data.error || 'Invalid recipient email';
-    }
-  } catch (err) {
-    if (err.name === 'AbortError') return;
-    if (composeRecipientStatus && composeToInput?.value.trim() === email) {
-      composeRecipientStatus.hidden = true;
-    }
-  }
-}
-
-composeToInput?.addEventListener('input', () => {
-  if (recipientValidationTimer) clearTimeout(recipientValidationTimer);
-  const val = composeToInput.value.trim();
-  if (!val || !val.includes('@')) {
-    resetRecipientStatus();
-    return;
-  }
-  recipientValidationTimer = setTimeout(() => {
-    validateComposeRecipient(val);
-  }, 350);
-});
-
-composeToInput?.addEventListener('blur', () => {
-  if (recipientValidationTimer) clearTimeout(recipientValidationTimer);
-  const val = composeToInput.value.trim();
-  if (val && val.includes('@')) {
-    validateComposeRecipient(val);
-  }
-});
 $('#refresh')?.addEventListener('click', async () => {
   const button = $('#refresh'), label = button.querySelector('span');
   button.disabled = true; label.textContent = 'Refreshing…';
