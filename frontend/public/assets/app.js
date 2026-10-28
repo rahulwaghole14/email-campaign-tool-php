@@ -858,7 +858,13 @@ async function load() {
     }
 
     if (typeof data.inbox_unread !== 'undefined') window.updateInboxBadge?.(data.inbox_unread);
-    $('#mode').textContent = data.dry_run ? 'Test mode enabled — emails won’t be sent.' : 'Live sending enabled — queued emails will be sent automatically.';
+    if ($('#mode')) {
+      $('#mode').textContent = data.dry_run ? 'Test mode enabled — emails won’t be sent.' : 'Live sending enabled — queued emails will be sent automatically.';
+      const modeWrap = $('#mode').closest('.mode');
+      if (modeWrap) {
+        modeWrap.hidden = !data.dry_run;
+      }
+    }
     $('#compose-mode').textContent = data.dry_run ? 'Test mode — emails won’t be sent' : 'Live mode — queued emails will be sent';
     $('#compose-mode').classList.toggle('is-live', !data.dry_run);
   } catch(e) {
