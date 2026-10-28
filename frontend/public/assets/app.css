@@ -3051,8 +3051,35 @@ body.is-unauthenticated #setup {
 .auth-brand-badge {
   display: flex !important;
   align-items: center !important;
-  gap: 14px !important;
+  gap: 16px !important;
   margin-bottom: 24px !important;
+}
+
+.auth-rsl-logo {
+  height: 48px !important;
+  width: auto !important;
+  object-fit: contain !important;
+  filter: drop-shadow(0 4px 12px rgba(34, 197, 94, 0.22)) !important;
+}
+
+.sidebar-rsl-logo {
+  height: 30px !important;
+  width: auto !important;
+  object-fit: contain !important;
+  filter: drop-shadow(0 2px 8px rgba(34, 197, 94, 0.35)) !important;
+}
+
+aside .brand {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+aside .brand > span {
+  font-size: 11px !important;
+  letter-spacing: 1.8px !important;
+  color: #b8cbc0 !important;
+  font-weight: 600 !important;
 }
 
 .auth-logo-icon {

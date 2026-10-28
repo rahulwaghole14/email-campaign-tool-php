@@ -13,8 +13,17 @@ use App\Services\Sheets\SheetService;
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $root = dirname(__DIR__, 2) . '/frontend';
-if (in_array($path, ['/assets/app.css', '/assets/app.js', '/assets/sheets.js', '/assets/inbox.js'], true)) {
-    header('Content-Type: ' . (str_ends_with($path, '.css') ? 'text/css' : 'application/javascript'));
+if (str_starts_with($path, '/assets/') && is_file($root . '/public' . $path)) {
+    $ext = pathinfo($path, PATHINFO_EXTENSION);
+    $mime = match ($ext) {
+        'css' => 'text/css',
+        'js' => 'application/javascript',
+        'png' => 'image/png',
+        'svg' => 'image/svg+xml',
+        'ico' => 'image/x-icon',
+        default => 'application/octet-stream',
+    };
+    header('Content-Type: ' . $mime);
     readfile($root . '/public' . $path); exit;
 }
 session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off']);
