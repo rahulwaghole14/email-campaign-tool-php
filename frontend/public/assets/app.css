@@ -3136,7 +3136,7 @@ aside .brand > span {
 
 .login-card-head {
   margin-bottom: 26px !important;
-  text-align: left !important;
+  text-align: center !important;
 }
 
 .login-title {
@@ -3146,19 +3146,20 @@ aside .brand > span {
   color: #0f2219 !important;
   margin: 10px 0 8px !important;
   line-height: 1.2 !important;
+  text-align: center !important;
 }
 
 /* Fix: force subtitle to neutral gray, override any .muted color */
 .login-desc,
 .login-card .login-desc,
-p.login-desc,
-#login .login-desc,
-#setup .login-desc {
-  font-size: 13.5px !important;
-  color: #6b7280 !important;
+p.login-desc {
+  font-size: 13px !important;
+  color: #6b7f74 !important;
   margin: 0 !important;
   line-height: 1.55 !important;
   font-weight: 400 !important;
+  white-space: nowrap !important;
+  text-align: center !important;
 }
 
 .login-card-head .eyebrow {
