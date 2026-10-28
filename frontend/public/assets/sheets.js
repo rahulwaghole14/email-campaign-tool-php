@@ -201,7 +201,18 @@
   $('#google-disconnect').addEventListener('click', event => busy(event.currentTarget, async () => { await post('google/disconnect'); await window.loadSheets(); notice('Google disconnected. Saved source settings are retained.'); }));
   $('#refresh-sources').addEventListener('click', window.loadSheets);
 
-  function clearMapping() { $('#sheet-mappings').replaceChildren(); $('#save-source').hidden = true; }
+  function clearMapping() {
+    $('#sheet-mappings').replaceChildren();
+    const saveBtn = $('#save-source');
+    if (saveBtn) saveBtn.hidden = true;
+    const actionsBar = $('#mapping-actions');
+    if (actionsBar) actionsBar.hidden = true;
+    const previewBanner = $('#detected-columns-preview');
+    if (previewBanner) {
+      previewBanner.hidden = true;
+      previewBanner.replaceChildren();
+    }
+  }
   $('#sheet-url').addEventListener('input', () => { $('#sheet-map-form').hidden = true; clearMapping(); mappingId = null; savedMapping = null; uploadId = null; });
   $('#sheet-tab').addEventListener('change', clearMapping); $('#sheet-header').addEventListener('input', clearMapping);
 
@@ -230,18 +241,89 @@
   async function readHeaders() {
     const data = await post('sheets/inspect', {...sourceInput(),sheet_id:Number($('#sheet-tab').value),header_row:Number($('#sheet-header').value)});
     clearMapping();
-    for (const [key,label] of Object.entries(fields)) {
-      const wrapper = element('label',label + (['id','email','subject','body'].includes(key) ? ' *' : ''));
-      const select = element('select'); select.name = key; select.required = ['id','email','subject','body'].includes(key);
-      const empty = element('option',select.required ? 'Select column' : 'Not mapped'); empty.value = ''; select.append(empty);
-      for (const header of data.headers.filter(Boolean)) { const option = element('option',header); option.value = header; select.append(option); }
-      select.value = savedMapping?.[key] || data.headers.find(header => aliases[key].includes(header.toLowerCase())) || '';
-      if (mappingId && key === 'id') select.disabled = true;
-      wrapper.append(select); $('#sheet-mappings').append(wrapper);
+
+    const headers = (data.headers || []).filter(Boolean);
+    const previewBanner = $('#detected-columns-preview');
+    if (previewBanner) {
+      previewBanner.hidden = false;
+      previewBanner.innerHTML = `
+        <div class="detected-columns-header">
+          <div class="detected-columns-summary">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            <span><strong>${headers.length} columns detected</strong> from Row ${Number($('#sheet-header').value)}</span>
+          </div>
+          <span class="detected-columns-hint">Verify the auto-mapped fields below or adjust any column</span>
+        </div>
+        <div class="detected-columns-chips">
+          ${headers.map(h => `<span class="col-chip">${escapeHtml(h)}</span>`).join('')}
+        </div>
+      `;
     }
-    $('#save-source').hidden = false;
+
+    const requiredKeys = ['id', 'email', 'subject', 'body'];
+    const optionalKeys = ['name', 'link', 'cc', 'bcc', 'enabled'];
+
+    const createFieldCard = (key, label, isRequired) => {
+      const card = element('div', undefined, 'mapping-field-card' + (isRequired ? ' is-required' : ''));
+      const headerRow = element('div', undefined, 'mapping-field-header');
+      const labelText = element('span', label, 'mapping-field-title');
+      const badge = element('span', isRequired ? 'Required' : 'Optional', isRequired ? 'mapping-badge required' : 'mapping-badge optional');
+      headerRow.append(labelText, badge);
+
+      const select = element('select');
+      select.name = key;
+      select.required = isRequired;
+      const empty = element('option', isRequired ? 'Select column…' : 'Not mapped (optional)');
+      empty.value = '';
+      select.append(empty);
+
+      for (const header of headers) {
+        const option = element('option', header);
+        option.value = header;
+        select.append(option);
+      }
+
+      const autoValue = savedMapping?.[key] || headers.find(header => aliases[key].includes(header.toLowerCase())) || '';
+      select.value = autoValue;
+      if (mappingId && key === 'id') select.disabled = true;
+
+      const syncStatus = () => {
+        card.classList.toggle('is-mapped', Boolean(select.value));
+      };
+      select.addEventListener('change', syncStatus);
+      syncStatus();
+
+      card.append(headerRow, select);
+      return card;
+    };
+
+    const reqSection = element('div', undefined, 'mapping-section');
+    reqSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill required">1</span> Mandatory Email Fields (Required to dispatch)</div><div class="mapping-section-grid"></div>`;
+    const reqGrid = reqSection.querySelector('.mapping-section-grid');
+    requiredKeys.forEach(key => reqGrid.append(createFieldCard(key, fields[key], true)));
+
+    const optSection = element('div', undefined, 'mapping-section');
+    optSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill optional">2</span> Optional Parameters (Name, Drive link, CC, BCC, Send Enabled)</div><div class="mapping-section-grid"></div>`;
+    const optGrid = optSection.querySelector('.mapping-section-grid');
+    optionalKeys.forEach(key => optGrid.append(createFieldCard(key, fields[key], false)));
+
+    $('#sheet-mappings').append(reqSection, optSection);
+
+    const actionsBar = $('#mapping-actions');
+    if (actionsBar) actionsBar.hidden = false;
+    const saveBtn = $('#save-source');
+    if (saveBtn) saveBtn.hidden = false;
   }
   $('#read-headers').addEventListener('click', event => busy(event.currentTarget, readHeaders));
+
+  $('#cancel-mapping-btn')?.addEventListener('click', () => {
+    $('#sheet-map-form').hidden = true;
+    clearMapping();
+    mappingId = null;
+    savedMapping = null;
+    uploadId = null;
+    $('#sheets-directory').hidden = false;
+  });
 
   $('#sheet-map-form').addEventListener('submit', event => { event.preventDefault(); busy(event.submitter, async () => {
     const mapping = {}; $('#sheet-mappings').querySelectorAll('select').forEach(select => mapping[select.name] = select.value);
