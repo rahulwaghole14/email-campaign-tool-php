@@ -97,11 +97,15 @@
       if (limitEl) limitEl.textContent = `Excel (.xlsx) or CSV, up to ${(uploadLimit / 1024 / 1024).toFixed(1).replace('.0','')} MB`;
 
       const statusPill = $('#google-status-pill');
-      if (statusPill) statusPill.hidden = !status.connected;
+      if (statusPill) {
+        statusPill.hidden = !status.connected;
+        statusPill.style.display = status.connected ? 'inline-flex' : 'none';
+      }
 
       const connectBtn = $('#google-connect');
       if (connectBtn) {
         connectBtn.hidden = status.connected;
+        connectBtn.style.display = status.connected ? 'none' : 'inline-flex';
         connectBtn.textContent = 'Connect Google';
       }
 

@@ -38,7 +38,9 @@ final class GoogleClient
     private function key(): string
     {
         $path = dirname(__DIR__, 3) . '/storage/app/private/google/token.key';
-        $file = fopen($path, 'c+b');
+        $dir = dirname($path);
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        $file = @fopen($path, 'c+b');
         if (!$file || !flock($file, LOCK_EX)) throw new RuntimeException('Cannot access token encryption key.');
         try {
             $key = stream_get_contents($file);

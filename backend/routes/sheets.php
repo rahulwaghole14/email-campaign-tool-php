@@ -24,9 +24,17 @@ try {
     if ($path === '/api/google/status' && $method === 'GET') respond(['configured' => $google->configured(), 'connected' => $google->connected(), 'upload_limit' => UploadReader::serverLimit()]);
     if ($path === '/api/google/connect' && $method === 'POST') {
         $state = bin2hex(random_bytes(32));
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1:8085';
-        $redirectUri = $scheme . '://' . $host . '/auth/google/callback';
+        $envRedirect = getenv('GOOGLE_REDIRECT_URI');
+        if ($envRedirect && trim($envRedirect) !== '') {
+            $redirectUri = trim($envRedirect);
+        } else {
+            $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+                || (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && $_SERVER['HTTP_X_FORWARDED_SSL'] === 'on');
+            $scheme = $isHttps ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'mailpilot.rslsolution.com';
+            $redirectUri = $scheme . '://' . $host . '/auth/google/callback';
+        }
         $url = $google->authorizationUrl($state, $redirectUri);
         $_SESSION['google_oauth'] = ['state' => $state, 'expires' => time() + 600, 'redirect_uri' => $redirectUri];
         respond(['url' => $url]);
