@@ -730,27 +730,31 @@ header #logout:hover {
 }
 
 .compose-discard-btn {
-  width: 36px !important;
   height: 36px !important;
-  border-radius: 50% !important;
-  border: none !important;
+  border-radius: 8px !important;
+  border: 1px solid transparent !important;
   background: transparent !important;
-  color: #5f6368 !important;
+  color: #6b7770 !important;
   display: inline-flex !important;
   align-items: center !important;
-  justify-content: center !important;
+  gap: 8px !important;
+  padding: 0 12px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
   cursor: pointer !important;
   transition: all .15s ease !important;
 }
 
 .compose-discard-btn:hover {
-  background: #f1f3f4 !important;
+  background: #fce8e6 !important;
+  border-color: #fad2cf !important;
   color: #c5221f !important;
 }
 
 .compose-discard-btn .icon {
-  width: 18px !important;
-  height: 18px !important;
+  width: 15px !important;
+  height: 15px !important;
+  stroke: currentColor !important;
 }
 
 /* Compose Attachments & Tools */
