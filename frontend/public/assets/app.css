@@ -3018,7 +3018,7 @@ body.is-unauthenticated main {
   justify-content: center !important;
   align-items: center !important;
   padding: 40px 20px !important;
-  background: radial-gradient(ellipse at 50% 25%, #ffffff 0%, #edf2ee 100%) !important;
+  background: radial-gradient(circle at 50% 20%, #f9fbf9 0%, #ebf1ec 100%) !important;
 }
 
 body.is-unauthenticated #login,
@@ -3052,18 +3052,18 @@ body.is-unauthenticated #setup {
   display: flex !important;
   align-items: center !important;
   gap: 16px !important;
-  margin-bottom: 24px !important;
+  margin-bottom: 26px !important;
 }
 
 .auth-rsl-logo {
-  height: 48px !important;
+  height: 52px !important;
   width: auto !important;
   object-fit: contain !important;
-  filter: drop-shadow(0 4px 12px rgba(34, 197, 94, 0.22)) !important;
+  filter: drop-shadow(0 4px 14px rgba(34, 197, 94, 0.28)) !important;
 }
 
 .sidebar-rsl-logo {
-  height: 30px !important;
+  height: 32px !important;
   width: auto !important;
   object-fit: contain !important;
   filter: drop-shadow(0 2px 8px rgba(34, 197, 94, 0.35)) !important;
@@ -3080,21 +3080,6 @@ aside .brand > span {
   letter-spacing: 1.8px !important;
   color: #b8cbc0 !important;
   font-weight: 600 !important;
-}
-
-.auth-logo-icon {
-  width: 46px !important;
-  height: 46px !important;
-  border-radius: 12px !important;
-  background: #142e25 !important;
-  color: #ffffff !important;
-  font-size: 24px !important;
-  font-weight: 700 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-shadow: 0 6px 16px rgba(20, 46, 37, 0.2) !important;
-  letter-spacing: -0.5px !important;
 }
 
 .auth-brand-text {
@@ -3124,9 +3109,17 @@ aside .brand > span {
   margin: 0 !important;
   padding: 36px 32px !important;
   border-radius: 16px !important;
-  border: 1px solid #dce4de !important;
-  box-shadow: 0 12px 36px rgba(20, 46, 37, 0.08), 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid rgba(20, 46, 37, 0.1) !important;
+  box-shadow: 0 20px 45px -10px rgba(20, 46, 37, 0.08), 0 0 0 1px rgba(20, 46, 37, 0.04) !important;
   background: #ffffff !important;
+}
+
+.login-card input:-webkit-autofill,
+.login-card input:-webkit-autofill:hover, 
+.login-card input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #142e25 !important;
+  transition: background-color 5000s ease-in-out 0s !important;
 }
 
 .login-card-head {
