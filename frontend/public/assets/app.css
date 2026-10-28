@@ -3144,6 +3144,12 @@ aside .brand > span {
   padding-left: 2px !important;
 }
 
+.subheading-sep {
+  margin: 0 8px !important;
+  color: #a0b2a7 !important;
+  font-weight: 400 !important;
+}
+
 .auth-brand-text {
   display: flex !important;
   flex-direction: column !important;
