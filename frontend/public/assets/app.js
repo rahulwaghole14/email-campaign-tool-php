@@ -613,20 +613,24 @@ async function openEmailDetail(id) {
       `;
     }
 
-    if (data.thread && data.thread.length > 1) {
+    const renderThreadFn = window.renderThreadStackHtml || (typeof renderThreadStackHtml === 'function' ? renderThreadStackHtml : null);
+    if (data.thread && data.thread.length > 1 && renderThreadFn) {
       target.innerHTML = `
         <div class="gmail-subject-row">
           <h1 class="gmail-subject-title">${escapeHtml(email.subject || '(No subject)')}</h1>
           <span class="thread-count-badge">${data.thread.length} messages</span>
           <span class="badge ${email.status}">${email.status.toUpperCase()}</span>
         </div>
-        ${renderThreadStackHtml(data.thread, recipient, email.subject)}
+        ${renderThreadFn(data.thread, recipient, email.subject)}
         ${activityHtml}
       `;
-      attachThreadEvents(target, recipient, email.subject, async () => {
-        await openEmailDetail(id);
-        await loadSentPage?.();
-      });
+      const attachFn = window.attachThreadEvents || (typeof attachThreadEvents === 'function' ? attachThreadEvents : null);
+      if (attachFn) {
+        attachFn(target, recipient, email.subject, async () => {
+          await openEmailDetail(id);
+          await loadSentPage?.();
+        });
+      }
     } else {
       target.innerHTML = `
         <div class="gmail-subject-row">

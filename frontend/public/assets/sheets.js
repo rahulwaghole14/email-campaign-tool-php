@@ -467,33 +467,127 @@
     updateBatchBar();
   });
 
-  // High-speed Batch / Bulk send handler (Persistent SMTP Connection & Single-Pass Verification)
+  // Live Batch / Bulk send handler with real-time modal progress & counter
+  let batchCancelRequested = false;
+
   async function performBatchSend(ids) {
     if (!ids || !ids.length) return;
-    if (!confirm(`Send ${ids.length} email${ids.length === 1 ? '' : 's'} now directly via Hostinger SMTP?`)) return;
-    const btn = $('#batch-send-btn') || $('#sheet-bulk-send-btn');
-    const origHtml = btn ? btn.innerHTML : '';
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `<span>⚡ Dispatching ${ids.length} emails…</span>`;
+    const total = ids.length;
+    if (!confirm(`Send ${total} email${total === 1 ? '' : 's'} now directly via Hostinger SMTP?`)) return;
+
+    const modal = $('#batch-progress-dialog');
+    const titleEl = $('#batch-progress-title');
+    const subtitleEl = $('#batch-progress-subtitle');
+    const badgeEl = $('#batch-progress-badge');
+    const counterText = $('#batch-counter-text');
+    const counterPercent = $('#batch-counter-percent');
+    const progressBar = $('#batch-progress-bar');
+    const statSent = $('#batch-stat-sent');
+    const statFailed = $('#batch-stat-failed');
+    const statRemaining = $('#batch-stat-remaining');
+    const logList = $('#batch-log-list');
+    const doneBtn = $('#batch-done-btn');
+    const cancelBtn = $('#batch-cancel-btn');
+
+    let sent = 0;
+    let failed = 0;
+    let remaining = total;
+    batchCancelRequested = false;
+
+    if (titleEl) titleEl.textContent = `Dispatching ${total} email${total === 1 ? '' : 's'}…`;
+    if (subtitleEl) subtitleEl.textContent = 'Live Hostinger SMTP dispatch in progress. Please keep this tab open.';
+    if (badgeEl) badgeEl.textContent = 'Dispatched live via Hostinger SMTP';
+    if (counterText) counterText.textContent = `0 / ${total} sent`;
+    if (counterPercent) counterPercent.textContent = '0%';
+    if (progressBar) progressBar.style.width = '0%';
+    if (statSent) statSent.textContent = '0';
+    if (statFailed) statFailed.textContent = '0';
+    if (statRemaining) statRemaining.textContent = String(total);
+    if (logList) logList.innerHTML = `<div class="batch-log-item muted">⚡ Starting dispatch for ${total} records…</div>`;
+    if (doneBtn) doneBtn.hidden = true;
+    if (cancelBtn) {
+      cancelBtn.hidden = false;
+      cancelBtn.disabled = false;
+      cancelBtn.textContent = 'Stop Remaining';
     }
-    notice(`Dispatching ${ids.length} email${ids.length === 1 ? '' : 's'} via persistent Hostinger SMTP connection…`);
-    try {
-      const res = await post(`sheets/${source.id}/batch-send`, { record_ids: ids });
-      selectedIds.clear();
-      notice(`⚡ Bulk dispatch complete! ${res.sent} email${res.sent === 1 ? '' : 's'} sent successfully${res.failed ? ` (${res.failed} failed/skipped)` : ''}.`);
-    } catch (err) {
-      notice(`Batch dispatch failed: ${err.message}`, true);
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
+
+    if (modal && typeof modal.showModal === 'function') {
+      try { modal.showModal(); } catch(e) {}
+    }
+
+    const chunkSize = 5; // Safe micro-chunks for instant UI updates & 0 Hostinger timeouts
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      chunks.push(ids.slice(i, i + chunkSize));
+    }
+
+    const addLog = (msg, type = 'success') => {
+      if (!logList) return;
+      const item = document.createElement('div');
+      item.className = `batch-log-item ${type}`;
+      item.textContent = msg;
+      logList.prepend(item);
+      if (logList.children.length > 25) logList.lastElementChild?.remove();
+    };
+
+    const updateUI = () => {
+      const processed = sent + failed;
+      const pct = Math.min(100, Math.round((processed / total) * 100));
+      if (counterText) counterText.textContent = `${sent} / ${total} sent`;
+      if (counterPercent) counterPercent.textContent = `${pct}%`;
+      if (progressBar) progressBar.style.width = `${pct}%`;
+      if (statSent) statSent.textContent = String(sent);
+      if (statFailed) statFailed.textContent = String(failed);
+      if (statRemaining) statRemaining.textContent = String(remaining);
+    };
+
+    const handleCancel = () => {
+      batchCancelRequested = true;
+      if (cancelBtn) {
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = 'Stopping…';
       }
-      await openSource(source.id, true);
-      if (typeof window.load === 'function') await window.load();
-      updateBatchBar();
+      addLog('⚠️ Stop requested. Finishing active request…', 'error');
+    };
+    cancelBtn?.addEventListener('click', handleCancel, { once: true });
+
+    for (let i = 0; i < chunks.length; i++) {
+      if (batchCancelRequested) {
+        addLog(`🛑 Stopped by user. ${remaining} records remaining unqueued.`, 'error');
+        break;
+      }
+      const chunk = chunks[i];
+      try {
+        const res = await post(`sheets/${source.id}/batch-send`, { record_ids: chunk });
+        sent += (res.sent || 0);
+        failed += (res.failed || 0);
+        remaining = Math.max(0, total - (sent + failed));
+        addLog(`✓ Batch ${i + 1}/${chunks.length}: ${res.sent} sent${res.failed ? `, ${res.failed} skipped` : ''}`);
+      } catch (err) {
+        failed += chunk.length;
+        remaining = Math.max(0, total - (sent + failed));
+        addLog(`❌ Batch ${i + 1} error: ${err.message}`, 'error');
+      }
+      updateUI();
     }
+
+    // Finalize modal
+    if (titleEl) titleEl.textContent = batchCancelRequested ? 'Batch Dispatch Paused' : '🎉 Dispatch Complete!';
+    if (subtitleEl) subtitleEl.textContent = `${sent} email${sent === 1 ? '' : 's'} successfully sent${failed ? `, ${failed} skipped or failed` : ''}.`;
+    if (badgeEl) badgeEl.textContent = batchCancelRequested ? 'Stopped' : '✓ Completed';
+    if (cancelBtn) cancelBtn.hidden = true;
+    if (doneBtn) doneBtn.hidden = false;
+
+    selectedIds.clear();
+    await openSource(source.id, true);
+    if (typeof window.load === 'function') await window.load();
+    updateBatchBar();
   }
+
+  $('#batch-done-btn')?.addEventListener('click', () => {
+    const modal = $('#batch-progress-dialog');
+    if (modal && typeof modal.close === 'function') modal.close();
+  });
 
   $('#batch-send-btn')?.addEventListener('click', () => {
     performBatchSend(Array.from(selectedIds));

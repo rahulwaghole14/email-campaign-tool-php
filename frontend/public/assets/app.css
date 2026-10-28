@@ -3735,6 +3735,169 @@ p.login-desc {
   line-height: 1.4 !important;
 }
 
+/* Live Batch Dispatch Modal */
+#batch-progress-dialog {
+  width: min(540px, calc(100vw - 32px)) !important;
+  border: 1px solid #dce4de !important;
+  border-radius: 16px !important;
+  padding: 0 !important;
+  color: #213129 !important;
+  box-shadow: 0 20px 45px rgba(0,0,0,0.22) !important;
+  overflow: hidden !important;
+}
+#batch-progress-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.65) !important;
+  backdrop-filter: blur(4px) !important;
+}
+.batch-modal-wrap {
+  padding: 24px 28px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 18px !important;
+}
+.batch-modal-header h2 {
+  font-size: 19px !important;
+  font-weight: 700 !important;
+  margin: 8px 0 4px !important;
+  color: #1a2e22 !important;
+}
+.batch-modal-status-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: #285c43 !important;
+  background: #eaf2eb !important;
+  padding: 3px 10px !important;
+  border-radius: 12px !important;
+}
+.batch-modal-status-badge .status-dot {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  background: #7fe832 !important;
+}
+.batch-modal-status-badge .status-dot.pulsing {
+  animation: pulseDot 1.4s infinite !important;
+}
+@keyframes pulseDot {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 8px #7fe832; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+.batch-meter-section {
+  background: #f7faf8 !important;
+  border: 1px solid #e1e8e3 !important;
+  border-radius: 12px !important;
+  padding: 14px 18px !important;
+}
+.batch-counter-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: baseline !important;
+  margin-bottom: 8px !important;
+}
+.batch-counter-label {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #1a2e22 !important;
+}
+.batch-counter-percent {
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  color: #285c43 !important;
+}
+.batch-progress-track {
+  width: 100% !important;
+  height: 10px !important;
+  background: #e6ede8 !important;
+  border-radius: 6px !important;
+  overflow: hidden !important;
+}
+.batch-progress-fill {
+  height: 100% !important;
+  background: linear-gradient(90deg, #285c43, #7fe832) !important;
+  border-radius: 6px !important;
+  transition: width 0.3s ease !important;
+}
+.batch-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 10px !important;
+}
+.batch-stat-card {
+  padding: 10px 12px !important;
+  border-radius: 10px !important;
+  text-align: center !important;
+  border: 1px solid #e1e8e3 !important;
+  background: #fff !important;
+}
+.batch-stat-card.is-success {
+  background: #f4fbf5 !important;
+  border-color: #c9e7ce !important;
+}
+.batch-stat-card.is-failed {
+  background: #fdf5f4 !important;
+  border-color: #f7d2cf !important;
+}
+.batch-stat-card.is-remaining {
+  background: #f8faf9 !important;
+  border-color: #e1e8e3 !important;
+}
+.batch-stat-num {
+  display: block !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+}
+.batch-stat-card.is-success .batch-stat-num { color: #1e6638 !important; }
+.batch-stat-card.is-failed .batch-stat-num { color: #b82d23 !important; }
+.batch-stat-card.is-remaining .batch-stat-num { color: #5f6e65 !important; }
+.batch-stat-lbl {
+  font-size: 11px !important;
+  color: #6c7b71 !important;
+  font-weight: 500 !important;
+}
+.batch-log-wrapper {
+  border: 1px solid #e1e8e3 !important;
+  border-radius: 10px !important;
+  padding: 10px 14px !important;
+  background: #fafbf9 !important;
+}
+.batch-log-title {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  color: #7a887e !important;
+  margin-bottom: 6px !important;
+}
+.batch-log-list {
+  max-height: 90px !important;
+  overflow-y: auto !important;
+  font-size: 12px !important;
+  display: flex !important;
+  flex-direction: column-reverse !important;
+  gap: 4px !important;
+}
+.batch-log-item {
+  color: #213129 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+.batch-log-item.success { color: #1e6638 !important; }
+.batch-log-item.error { color: #b82d23 !important; }
+.batch-modal-footer {
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  padding-top: 4px !important;
+}
+
+
 
 
 

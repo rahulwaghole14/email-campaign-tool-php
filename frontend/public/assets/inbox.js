@@ -721,5 +721,7 @@
 
   window.loadInbox = loadInbox;
   window.updateInboxBadge = updateBadge;
+  window.renderThreadStackHtml = renderThreadStackHtml;
+  window.attachThreadEvents = attachThreadEvents;
 })();
 
