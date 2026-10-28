@@ -258,6 +258,42 @@ try {
     if (preg_match('#^/api/inbox/(\d+)/toggle-read$#', $path, $match) && $method === 'POST') {
         respond(['ok' => $imap->toggleRead((int) $match[1])]);
     }
+    if ($path === '/api/validate-recipient' && $method === 'GET') {
+        $email = trim((string) ($_GET['email'] ?? ''));
+        if ($email === '') {
+            respond(['valid' => false, 'error' => 'Email is required.'], 400);
+        }
+        $cleanEmail = trim(preg_replace('/^[`\'"\s\x{00a0}\x{200b}]+|[`\'"\s\x{00a0}\x{200b}]+$/u', '', $email));
+        if (!filter_var($cleanEmail, FILTER_VALIDATE_EMAIL)) {
+            respond(['valid' => false, 'error' => 'Invalid email format (e.g. name@domain.com)'], 200);
+        }
+        $parts = explode('@', $cleanEmail);
+        $domain = end($parts);
+        if (!$domain || !str_contains($domain, '.')) {
+            respond(['valid' => false, 'error' => 'Incomplete domain.'], 200);
+        }
+        $hasMx = false;
+        try {
+            $hasMx = @checkdnsrr($domain, 'MX') || @checkdnsrr($domain, 'A');
+        } catch (\Throwable) {
+            $hasMx = true;
+        }
+        if (!$hasMx) {
+            respond([
+                'valid' => false,
+                'domain' => $domain,
+                'has_mx' => false,
+                'error' => "No mail server found on @{$domain} (will bounce)"
+            ], 200);
+        }
+        respond([
+            'valid' => true,
+            'email' => $cleanEmail,
+            'domain' => $domain,
+            'has_mx' => true,
+            'message' => "Mail server active on @{$domain}"
+        ], 200);
+    }
     if ($path === '/api/emails' && $method === 'GET') respond($history->listing($_GET));
     if (preg_match('#^/api/emails/(\d+)$#', $path, $match) && $method === 'GET') {
         $detail = $history->detail((int) $match[1]);
