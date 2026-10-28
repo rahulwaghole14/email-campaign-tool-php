@@ -527,16 +527,18 @@ header #logout:hover {
   to { transform: rotate(360deg); }
 }
 
-/* Gmail-Style Compose Polish */
+/* Full-Width Workspace Compose Polish */
 .compose-heading {
-  max-width: 920px !important;
-  margin: 0 auto 14px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 0 20px !important;
 }
 
 .compose-heading h1 {
   font-size: 28px !important;
-  font-weight: 500 !important;
-  letter-spacing: -0.3px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.5px !important;
+  color: #1f2923 !important;
   margin: 0 0 6px !important;
 }
 
@@ -549,12 +551,13 @@ header #logout:hover {
 }
 
 .compose-card {
-  max-width: 920px !important;
-  margin: 0 auto 30px !important;
-  background: #fff !important;
-  border: 1px solid #dadce0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 0 36px !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(20, 46, 37, 0.1) !important;
   border-radius: 16px !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.04) !important;
+  box-shadow: 0 4px 24px rgba(20, 46, 37, 0.05), 0 1px 3px rgba(20, 46, 37, 0.03) !important;
   padding: 0 !important;
   overflow: hidden !important;
 }
@@ -566,9 +569,9 @@ header #logout:hover {
 .compose-row {
   display: flex !important;
   align-items: center !important;
-  padding: 10px 20px !important;
-  border-bottom: 1px solid #f1f3f4 !important;
-  background: #fff !important;
+  padding: 12px 24px !important;
+  border-bottom: 1px solid #edf1ee !important;
+  background: #ffffff !important;
   gap: 12px !important;
   transition: background-color .15s ease !important;
 }
@@ -653,7 +656,7 @@ header #logout:hover {
 }
 
 .compose-body-row {
-  padding: 16px 20px 20px !important;
+  padding: 20px 24px 24px !important;
   background: #fff !important;
 }
 
@@ -662,13 +665,13 @@ header #logout:hover {
   border: none !important;
   background: transparent !important;
   padding: 0 !important;
-  font-size: 14px !important;
+  font-size: 14.5px !important;
   line-height: 1.65 !important;
   color: #202124 !important;
   outline: none !important;
   font-family: inherit !important;
   resize: vertical !important;
-  min-height: 260px !important;
+  min-height: 280px !important;
   box-shadow: none !important;
   margin: 0 !important;
 }
@@ -682,9 +685,9 @@ header #logout:hover {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  padding: 14px 22px !important;
+  padding: 16px 24px !important;
   background: #fafbfc !important;
-  border-top: 1px solid #f1f3f4 !important;
+  border-top: 1px solid #edf1ee !important;
   box-shadow: none !important;
 }
 
