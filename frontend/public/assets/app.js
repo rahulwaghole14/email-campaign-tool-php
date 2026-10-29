@@ -10,6 +10,9 @@ async function api(path, options = {}) {
 }
 function view(name) {
   if (!name) name = 'overview';
+  if (currentSession?.user?.role === 'member' && ['mail-accounts', 'users', 'integrations'].includes(name)) {
+    name = 'overview';
+  }
   const targetView = document.getElementById(name);
   if (!targetView) name = 'overview';
 
@@ -41,10 +44,8 @@ function view(name) {
   if (name === 'sheets') window.loadSheets?.();
   if (name === 'inbox') window.loadInbox?.();
   if (name === 'sent') loadSentPage?.();
-  if (name === 'integrations') {
-    loadMailAccounts?.();
-    if (currentSession?.user?.role === 'admin') loadUsers?.();
-  }
+  if (name === 'mail-accounts') loadMailAccounts?.();
+  if (name === 'users') loadUsers?.();
   if (name === 'compose') {
     const titleEl = $('#compose-title');
     const submitLabel = $('#compose-submit-label');
@@ -973,13 +974,14 @@ async function init() {
           roleEl.className = 'sidebar-user-role-badge ' + (isAdmin ? 'is-admin' : 'is-member');
         }
 
-        // Show/hide team management
-        if (session.user.role !== 'admin') {
-          if ($('#tab-btn-team')) $('#tab-btn-team').hidden = true;
-          if ($('#btn-add-mailbox')) $('#btn-add-mailbox').hidden = true;
-        } else {
-          if ($('#tab-btn-team')) $('#tab-btn-team').hidden = false;
-          if ($('#btn-add-mailbox')) $('#btn-add-mailbox').hidden = false;
+        // Show/hide management navigation for non-admin
+        const isMember = (session.user.role === 'member');
+        for (const navId of ['#nav-mail-accounts', '#nav-users', '#nav-integrations']) {
+          const el = $(navId);
+          if (el) {
+            el.hidden = isMember;
+            el.style.display = isMember ? 'none' : '';
+          }
         }
       }
 
@@ -1538,7 +1540,7 @@ window.getActiveSenderAccount = function() {
 async function loadMailAccounts() {
   try {
     const res = await api('mail-accounts');
-    currentMailAccounts = res.accounts || [];
+    currentMailAccounts = Array.isArray(res) ? res : (res.accounts || []);
     renderMailAccountsConfig(currentMailAccounts);
     populateComposeSender(currentMailAccounts);
     if (window.setInboxAccountOptions && currentSession?.user) {
@@ -1746,7 +1748,7 @@ function openMailboxModal(acc = null) {
 async function loadUsers() {
   try {
     const res = await api('users');
-    currentTeamUsers = res.users || [];
+    currentTeamUsers = Array.isArray(res) ? res : (res.users || []);
     renderUsersConfig(currentTeamUsers);
     const badge = $('#team-count-badge');
     if (badge) badge.textContent = currentTeamUsers.length;
@@ -1777,7 +1779,7 @@ function renderUsersConfig(users) {
       <div style="display:flex;align-items:center;gap:10px">
         <div class="sidebar-user-avatar" style="width:28px;height:28px;font-size:12px">${escapeHtml((u.name || u.email || 'U').charAt(0).toUpperCase())}</div>
         <div>
-          <strong style="color:#213129;display:block">${escapeHtml(u.name || 'Colleague')} ${isMe ? '<small class="dash-badge green" style="font-size:10px">You</small>' : ''}</strong>
+          <strong style="color:#213129;display:block">${escapeHtml(u.name || 'User')} ${isMe ? '<small class="dash-badge green" style="font-size:10px">You</small>' : ''}</strong>
           <small class="muted" style="font-size:12px">${escapeHtml(u.email)}</small>
         </div>
       </div>
@@ -1823,7 +1825,7 @@ function renderUsersConfig(users) {
       delBtn.style.color = '#c5221f';
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', async () => {
-        if (!confirm(`Are you sure you want to remove colleague "${u.name || u.email}"?`)) return;
+        if (!confirm(`Are you sure you want to remove user "${u.name || u.email}"?`)) return;
         try {
           await api(`users/${u.id}`, { method: 'DELETE' });
           notice(`User ${u.email} removed.`);
@@ -1868,7 +1870,7 @@ function openUserModal(u = null) {
   }
 
   if (u) {
-    if (title) title.textContent = 'Edit Colleague Permissions';
+    if (title) title.textContent = 'Edit User Permissions';
     $('#user-id').value = u.id;
     $('#u-name').value = u.name || '';
     $('#u-email').value = u.email || '';
@@ -1879,7 +1881,7 @@ function openUserModal(u = null) {
     if (passHint) passHint.hidden = false;
     if (passInput) passInput.required = false;
   } else {
-    if (title) title.textContent = 'Add New Colleague';
+    if (title) title.textContent = 'Add New User';
     $('#user-id').value = '';
     $('#u-name').value = '';
     $('#u-email').value = '';
@@ -2024,7 +2026,7 @@ $('#user-form')?.addEventListener('submit', async event => {
       body: JSON.stringify(payload)
     });
 
-    notice(idVal ? `Colleague updated successfully.` : `Colleague invited and configured successfully!`);
+    notice(idVal ? `User updated successfully.` : `User added successfully!`);
     $('#user-modal')?.close();
     await loadUsers();
   } catch (err) {
@@ -2032,17 +2034,6 @@ $('#user-form')?.addEventListener('submit', async event => {
   } finally {
     if (btn) btn.disabled = false;
   }
-});
-
-// Integrations Tab Navigation
-document.querySelectorAll('#integrations-tabs .config-tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#integrations-tabs .config-tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.config-tab-content').forEach(c => c.hidden = true);
-    btn.classList.add('active');
-    const target = document.getElementById(btn.dataset.tab);
-    if (target) target.hidden = false;
-  });
 });
 
 init();

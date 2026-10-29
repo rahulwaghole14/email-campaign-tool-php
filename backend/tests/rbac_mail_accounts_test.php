@@ -80,3 +80,4 @@ assert($memberMailboxes[0]['email'] === 'rahul@rslsolution.com', "Member must be
 echo "✓ Role-based mailbox isolation verified.\n";
 
 echo "All RBAC & Multi-Mailbox tests passed successfully!\n";
+

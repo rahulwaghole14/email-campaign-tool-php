@@ -172,3 +172,4 @@ final class UserService
         $db->prepare("DELETE FROM users WHERE id = ?")->execute([$id]);
     }
 }
+
