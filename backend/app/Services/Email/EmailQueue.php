@@ -50,11 +50,12 @@ final class EmailQueue
         if ($id = $existing->fetchColumn()) return (int) $id;
         $now = gmdate('c');
         $inboxEmailId = !empty($input['inbox_email_id']) ? (int) $input['inbox_email_id'] : null;
+        $mailAccountId = !empty($input['mail_account_id']) ? (int) $input['mail_account_id'] : null;
         $threadId = !empty($input['thread_id']) ? trim((string) $input['thread_id']) : md5(mb_strtolower($recipient, 'UTF-8') . '|' . ConversationThread::normalizeSubject($subject));
         $this->db->beginTransaction();
         try {
-            $query = $this->db->prepare('INSERT INTO emails (recipient, cc, bcc, subject, body, attachments, idempotency_key, inbox_email_id, thread_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            $query->execute([$recipient, $lists['cc'], $lists['bcc'], $subject, $body, $attachments, $key, $inboxEmailId, $threadId, $now, $now]);
+            $query = $this->db->prepare('INSERT INTO emails (mail_account_id, recipient, cc, bcc, subject, body, attachments, idempotency_key, inbox_email_id, thread_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $query->execute([$mailAccountId, $recipient, $lists['cc'], $lists['bcc'], $subject, $body, $attachments, $key, $inboxEmailId, $threadId, $now, $now]);
             $id = (int) $this->db->lastInsertId();
             $this->log($id, 'queued', 'Manual email queued for processing.');
             $this->db->commit();

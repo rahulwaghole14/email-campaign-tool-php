@@ -198,6 +198,7 @@ final class SheetService
             'recipient' => $cleanEmail, 'subject' => $values['subject'],
             'body' => $values['body'] . (empty($values['link']) ? '' : "\n\n" . $values['link']),
             'cc' => $values['cc'] ?? '', 'bcc' => $values['bcc'] ?? '',
+            'mail_account_id' => !empty($input['mail_account_id']) ? (int) $input['mail_account_id'] : null,
             'idempotency_key' => $this->key($preview['source'], $row['record_id']),
         ]);
     }
@@ -260,6 +261,7 @@ final class SheetService
                     'body' => (string) ($values['body'] ?? '') . (empty($values['link']) ? '' : "\n\n" . $values['link']),
                     'cc' => (string) ($values['cc'] ?? ''),
                     'bcc' => (string) ($values['bcc'] ?? ''),
+                    'mail_account_id' => !empty($input['mail_account_id']) ? (int) $input['mail_account_id'] : null,
                     'idempotency_key' => $this->key($preview['source'], $row['record_id']),
                 ]);
                 $emailIds[$emailId] = $recId;

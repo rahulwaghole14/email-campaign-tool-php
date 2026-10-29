@@ -10,6 +10,8 @@ use App\Services\Email\ConversationThread;
 use App\Services\AdminSetup;
 use App\Services\Google\GoogleClient;
 use App\Services\Sheets\SheetService;
+use App\Services\MailAccountService;
+use App\Services\UserService;
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $root = dirname(__DIR__, 2) . '/frontend';
@@ -66,9 +68,20 @@ if ($method !== 'GET' && !hash_equals($_SESSION['csrf'], $_SERVER['HTTP_X_CSRF_T
 if ($path === '/api/session' && $method === 'GET') {
     $googleNotice = $_SESSION['google_notice'] ?? null; unset($_SESSION['google_notice']);
     $adminEmail = getenv('MAIL_FROM_ADDRESS') ?: getenv('SMTP_USERNAME') ?: '';
+    $currentUser = null;
+    if (!empty($_SESSION['authenticated'])) {
+        $currentUser = [
+            'id' => (int) ($_SESSION['user_id'] ?? 1),
+            'name' => $_SESSION['user_name'] ?? 'Administrator',
+            'email' => $_SESSION['user_email'] ?? $adminEmail,
+            'role' => $_SESSION['user_role'] ?? 'admin',
+            'assigned_account_id' => !empty($_SESSION['assigned_account_id']) ? (int) $_SESSION['assigned_account_id'] : null
+        ];
+    }
     respond([
         'csrf' => $_SESSION['csrf'],
         'authenticated' => !empty($_SESSION['authenticated']),
+        'user' => $currentUser,
         'configured' => $passwordHash !== '',
         'setup_allowed' => $passwordHash === '' && AdminSetup::isLocal($_SERVER),
         'admin_email' => $adminEmail,
@@ -83,6 +96,10 @@ if ($path === '/api/setup' && $method === 'POST') {
         AdminSetup::create(dirname(__DIR__) . '/.env', (string) ($input['password'] ?? ''), (string) ($input['confirmation'] ?? ''));
         session_regenerate_id(true);
         $_SESSION['authenticated'] = true;
+        $_SESSION['user_id'] = 1;
+        $_SESSION['user_role'] = 'admin';
+        $_SESSION['user_name'] = 'Administrator';
+        $_SESSION['user_email'] = getenv('ADMIN_EMAIL') ?: (getenv('SMTP_USERNAME') ?: 'admin@rslsolution.com');
         respond(['ok' => true]);
     } catch (InvalidArgumentException|JsonException $e) {
         respond(['error' => $e->getMessage()], 422);
@@ -91,12 +108,52 @@ if ($path === '/api/setup' && $method === 'POST') {
     }
 }
 if ($path === '/api/login' && $method === 'POST') {
-    if (!$passwordHash) respond(['error' => 'Set ADMIN_PASSWORD_HASH in backend/.env first.'], 503);
     $input = json_decode(file_get_contents('php://input'), true) ?: [];
-    if (!password_verify((string) ($input['password'] ?? ''), $passwordHash)) { usleep(500000); respond(['error' => 'Invalid password.'], 401); }
+    $identifier = (string) ($input['email'] ?? ($input['username'] ?? ''));
+    $password = (string) ($input['password'] ?? '');
+
+    try {
+        $db = Database::connect();
+        Database::migrate($db);
+        $user = UserService::authenticate($db, $identifier, $password);
+    } catch (\Throwable) {
+        $user = null;
+    }
+
+    if (!$user) {
+        // Fallback to legacy single admin password check
+        if ($passwordHash && password_verify($password, $passwordHash)) {
+            $user = [
+                'id' => 1,
+                'name' => 'Administrator',
+                'email' => getenv('ADMIN_EMAIL') ?: (getenv('SMTP_USERNAME') ?: 'admin@rslsolution.com'),
+                'role' => 'admin',
+                'assigned_account_id' => 1
+            ];
+        } else {
+            usleep(500000);
+            respond(['error' => 'Invalid email or password.'], 401);
+        }
+    }
+
     session_regenerate_id(true);
     $_SESSION['authenticated'] = true;
-    respond(['ok' => true]);
+    $_SESSION['user_id'] = (int) $user['id'];
+    $_SESSION['user_role'] = $user['role'];
+    $_SESSION['user_name'] = $user['name'];
+    $_SESSION['user_email'] = $user['email'];
+    $_SESSION['assigned_account_id'] = !empty($user['assigned_account_id']) ? (int) $user['assigned_account_id'] : null;
+
+    respond([
+        'ok' => true,
+        'user' => [
+            'id' => (int) $user['id'],
+            'name' => $user['name'],
+            'email' => $user['email'],
+            'role' => $user['role'],
+            'assigned_account_id' => $_SESSION['assigned_account_id']
+        ]
+    ]);
 }
 if ($path === '/api/password-reset/request' && $method === 'POST') {
     try {
@@ -245,11 +302,87 @@ if ($path === '/api/logout' && $method === 'POST') { $_SESSION = []; session_des
 try {
     $db = Database::connect();
     Database::migrate($db);
+    $currentUser = [
+        'id' => (int) ($_SESSION['user_id'] ?? 1),
+        'name' => $_SESSION['user_name'] ?? 'Administrator',
+        'email' => $_SESSION['user_email'] ?? (getenv('SMTP_USERNAME') ?: 'admin@rslsolution.com'),
+        'role' => $_SESSION['user_role'] ?? 'admin',
+        'assigned_account_id' => !empty($_SESSION['assigned_account_id']) ? (int) $_SESSION['assigned_account_id'] : null
+    ];
     $queue = new EmailQueue($db);
     $history = new EmailHistory($db);
-    $imap = new ImapClient($db);
-    if ($path === '/api/inbox' && $method === 'GET') respond($imap->listing($_GET));
-    if ($path === '/api/inbox/sync' && $method === 'POST') respond($imap->sync(50));
+    $defaultMailAccount = MailAccountService::getDefault($db);
+    $imap = new ImapClient($db, $defaultMailAccount);
+
+    // Mail Accounts & Multi-Inbox Management
+    if ($path === '/api/mail-accounts' && $method === 'GET') {
+        respond(MailAccountService::getForUser($db, $currentUser, false));
+    }
+    if ($path === '/api/mail-accounts' && $method === 'POST') {
+        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can manage connected mail accounts.'], 403);
+        $input = json_decode(file_get_contents('php://input'), true, 16, JSON_THROW_ON_ERROR);
+        $id = !empty($input['id']) ? (int) $input['id'] : null;
+        respond(MailAccountService::save($db, $input, $id));
+    }
+    if ($path === '/api/mail-accounts/test' && $method === 'POST') {
+        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can test mail accounts.'], 403);
+        $input = json_decode(file_get_contents('php://input'), true, 16, JSON_THROW_ON_ERROR);
+        if (!empty($input['id']) && empty($input['smtp_pass'])) {
+            $existing = MailAccountService::getById($db, (int) $input['id'], true);
+            if ($existing) {
+                $input['smtp_pass'] = $existing['smtp_pass'];
+                $input['imap_pass'] = $existing['imap_pass'];
+            }
+        }
+        respond(MailAccountService::testConnection($input));
+    }
+    if (preg_match('#^/api/mail-accounts/(\d+)$#', $path, $match) && $method === 'DELETE') {
+        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can delete mail accounts.'], 403);
+        MailAccountService::delete($db, (int) $match[1]);
+        respond(['ok' => true]);
+    }
+
+    // Role-Based User Management
+    if ($path === '/api/users' && $method === 'GET') {
+        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can view team members.'], 403);
+        respond(UserService::getAll($db));
+    }
+    if ($path === '/api/users' && $method === 'POST') {
+        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can manage team members.'], 403);
+        $input = json_decode(file_get_contents('php://input'), true, 16, JSON_THROW_ON_ERROR);
+        $id = !empty($input['id']) ? (int) $input['id'] : null;
+        respond(UserService::save($db, $input, $id));
+    }
+    if (preg_match('#^/api/users/(\d+)$#', $path, $match) && $method === 'DELETE') {
+        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can delete team members.'], 403);
+        UserService::delete($db, (int) $match[1], $currentUser['id']);
+        respond(['ok' => true]);
+    }
+
+    if ($path === '/api/inbox' && $method === 'GET') {
+        $queryParams = $_GET;
+        if ($currentUser['role'] === 'member' && !empty($currentUser['assigned_account_id'])) {
+            $queryParams['account_id'] = $currentUser['assigned_account_id'];
+        }
+        respond($imap->listing($queryParams));
+    }
+    if ($path === '/api/inbox/sync' && $method === 'POST') {
+        $allAccounts = MailAccountService::getAll($db, true);
+        $totalNew = 0;
+        if (!empty($allAccounts)) {
+            foreach ($allAccounts as $acct) {
+                if ($acct['status'] !== 'active') continue;
+                try {
+                    $client = new ImapClient($db, $acct);
+                    $res = $client->sync(30);
+                    $totalNew += (int) ($res['new_count'] ?? 0);
+                } catch (\Throwable $t) {}
+            }
+            respond(['new_count' => $totalNew]);
+        } else {
+            respond($imap->sync(50));
+        }
+    }
     if (preg_match('#^/api/inbox/(\d+)$#', $path, $match) && $method === 'GET') {
         $detail = $imap->detail((int) $match[1]);
         if (!$detail) respond(['error' => 'Email not found.'], 404);
@@ -475,6 +608,20 @@ try {
         if ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 500000) respond(['error' => 'Request is too large.'], 413);
         $input = json_decode(file_get_contents('php://input'), true, 32, JSON_THROW_ON_ERROR);
         if (!is_array($input)) throw new InvalidArgumentException('Invalid request.');
+
+        // Sender Mailbox Authorization
+        $mailAccountId = !empty($input['mail_account_id']) ? (int) $input['mail_account_id'] : null;
+        if ($currentUser['role'] === 'member') {
+            if (!empty($currentUser['assigned_account_id'])) {
+                $mailAccountId = (int) $currentUser['assigned_account_id'];
+            }
+        }
+        if ($mailAccountId === null) {
+            $defaultAcct = MailAccountService::getDefault($db);
+            $mailAccountId = (int) ($defaultAcct['id'] ?? 1);
+        }
+        $input['mail_account_id'] = $mailAccountId;
+
         $id = $queue->enqueue($input);
         // Dispatch immediately over SMTP
         $processor = new \App\Services\Email\EmailProcessor($db);

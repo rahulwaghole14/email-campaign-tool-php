@@ -24,7 +24,12 @@ final class EmailProcessor
 
         $queue = new EmailQueue($this->db);
         try {
-            $messageId = ($this->mailer ?? new Mailer())->send($email);
+            $mailer = $this->mailer;
+            if ($mailer === null) {
+                $account = !empty($email['mail_account_id']) ? \App\Services\MailAccountService::getById($this->db, (int) $email['mail_account_id'], true) : null;
+                $mailer = new Mailer($account);
+            }
+            $messageId = $mailer->send($email);
             $status = $messageId === null ? 'dry_run' : 'sent';
             $this->db->prepare('UPDATE emails SET status = ?, message_id = ?, error = NULL, updated_at = ? WHERE id = ?')
                 ->execute([$status, $messageId, gmdate('c'), $id]);
@@ -68,7 +73,12 @@ final class EmailProcessor
 
         if (empty($validEmails)) return [];
 
-        $mailer = $this->mailer ?? new Mailer();
+        $mailer = $this->mailer;
+        if ($mailer === null) {
+            $firstAccountId = !empty($validEmails[0]['mail_account_id']) ? (int) $validEmails[0]['mail_account_id'] : 0;
+            $account = $firstAccountId > 0 ? \App\Services\MailAccountService::getById($this->db, $firstAccountId, true) : null;
+            $mailer = new Mailer($account);
+        }
         $results = $mailer->sendBatch($validEmails);
         $queue = new EmailQueue($this->db);
 

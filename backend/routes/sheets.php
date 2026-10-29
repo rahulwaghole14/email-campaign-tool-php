@@ -53,6 +53,12 @@ try {
         if ($method === 'DELETE') { $sheets->delete($sourceId); respond(['ok' => true]); }
         if ($method === 'GET' && $action === '') respond($sheets->preview($sourceId));
         if ($method === 'POST' && $action === 'edit') { $sheets->edit($sourceId, $input); respond(['ok' => true]); }
+        if ($method === 'POST' && ($action === 'send' || $action === 'batch-send' || $action === 'queue')) {
+            $sessionUser = getSessionUser();
+            if (!empty($sessionUser) && ($sessionUser['role'] ?? '') === 'member' && !empty($sessionUser['assigned_account_id'])) {
+                $input['mail_account_id'] = (int) $sessionUser['assigned_account_id'];
+            }
+        }
         if ($method === 'POST' && $action === 'queue') respond(['id' => $sheets->enqueue($sourceId, $input)]);
         if ($method === 'POST' && $action === 'send') respond($sheets->send($sourceId, $input));
         if ($method === 'POST' && $action === 'batch-send') respond($sheets->batchSend($sourceId, $input));

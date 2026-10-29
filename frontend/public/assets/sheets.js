@@ -497,7 +497,12 @@
           count: 1
         });
         if (!confirmed) return;
-        const data = await post(`sheets/${source.id}/send`, {record_id: row.record_id, version: row.version});
+        const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
+        const sendPayload = {record_id: row.record_id, version: row.version};
+        if (activeSender && activeSender.id) {
+          sendPayload.mail_account_id = activeSender.id;
+        }
+        const data = await post(`sheets/${source.id}/send`, sendPayload);
         await openSource(source.id, true);
         await load();
         await window.openEmailDetail(data.id);
@@ -575,6 +580,12 @@
 
       if (titleEl) titleEl.textContent = title || 'Confirm Email Dispatch';
       if (descEl) descEl.textContent = desc || 'Ready to send via Hostinger SMTP.';
+
+      const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
+      const fromEl = $('#send-confirm-from');
+      if (fromEl) {
+        fromEl.textContent = activeSender ? (activeSender.name ? `${activeSender.name} <${activeSender.email}>` : activeSender.email) : 'ray@rslsolution.com';
+      }
 
       if (recipient) {
         recipEl.parentElement.hidden = false;
@@ -741,7 +752,12 @@
       }
       const chunk = chunks[i];
       try {
-        const res = await post(`sheets/${source.id}/batch-send`, { record_ids: chunk });
+        const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
+        const batchPayload = { record_ids: chunk };
+        if (activeSender && activeSender.id) {
+          batchPayload.mail_account_id = activeSender.id;
+        }
+        const res = await post(`sheets/${source.id}/batch-send`, batchPayload);
         sent += (res.sent || 0);
         failed += (res.failed || 0);
         remaining = Math.max(0, total - (sent + failed));

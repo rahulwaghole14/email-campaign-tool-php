@@ -14,15 +14,25 @@ final class ImapClient
     private int $port;
     private string $username;
     private string $password;
+    private ?int $accountId = null;
     private int $tagIndex = 0;
 
-    public function __construct(PDO $db)
+    public function __construct(PDO $db, ?array $account = null)
     {
         $this->db = $db;
-        $this->host = getenv('IMAP_HOST') ?: 'imap.hostinger.com';
-        $this->port = (int) (getenv('IMAP_PORT') ?: 993);
-        $this->username = getenv('IMAP_USERNAME') ?: (getenv('SMTP_USERNAME') ?: '');
-        $this->password = getenv('IMAP_PASSWORD') ?: (getenv('SMTP_PASSWORD') ?: '');
+        if ($account && !empty($account['imap_user'])) {
+            $this->host = $account['imap_host'] ?? 'imap.hostinger.com';
+            $this->port = (int) ($account['imap_port'] ?? 993);
+            $this->username = $account['imap_user'];
+            $this->password = $account['imap_pass'] ?? '';
+            $this->accountId = !empty($account['id']) ? (int) $account['id'] : null;
+        } else {
+            $this->host = getenv('IMAP_HOST') ?: 'imap.hostinger.com';
+            $this->port = (int) (getenv('IMAP_PORT') ?: 993);
+            $this->username = getenv('IMAP_USERNAME') ?: (getenv('SMTP_USERNAME') ?: '');
+            $this->password = getenv('IMAP_PASSWORD') ?: (getenv('SMTP_PASSWORD') ?: '');
+            $this->accountId = 1;
+        }
     }
 
     /**
@@ -167,8 +177,8 @@ final class ImapClient
     private function saveEmail(array $email): void
     {
         $stmt = $this->db->prepare("
-            INSERT INTO inbox_emails (uid, message_id, from_name, from_email, to_email, subject, body, html_body, snippet, is_read, received_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            INSERT INTO inbox_emails (mail_account_id, uid, message_id, from_name, from_email, to_email, subject, body, html_body, snippet, is_read, received_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
             ON DUPLICATE KEY UPDATE
                 subject = VALUES(subject),
                 body = VALUES(body),
@@ -176,6 +186,7 @@ final class ImapClient
                 snippet = VALUES(snippet)
         ");
         $stmt->execute([
+            $this->accountId,
             $email['uid'],
             $email['message_id'],
             $email['from_name'],
@@ -215,6 +226,16 @@ final class ImapClient
             $conditions[] = "is_read = 1";
         }
 
+        $accountId = !empty($query['account_id']) ? (int) $query['account_id'] : null;
+        $toEmail = !empty($query['to_email']) ? trim((string) $query['to_email']) : null;
+        if ($accountId !== null && $accountId > 0) {
+            $conditions[] = "mail_account_id = ?";
+            $params[] = $accountId;
+        } elseif ($toEmail !== null && $toEmail !== '') {
+            $conditions[] = "LOWER(to_email) = ?";
+            $params[] = strtolower($toEmail);
+        }
+
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
         $countStmt = $this->db->prepare("SELECT COUNT(*) FROM inbox_emails {$where}");
@@ -227,7 +248,7 @@ final class ImapClient
         $page = min($page, $pages);
         $offset = ($page - 1) * $size;
 
-        $selectSql = "SELECT id, uid, message_id, from_name, from_email, to_email, subject, body, snippet, is_read, received_at, created_at FROM inbox_emails {$where} ORDER BY received_at DESC, id DESC LIMIT {$size} OFFSET {$offset}";
+        $selectSql = "SELECT id, mail_account_id, uid, message_id, from_name, from_email, to_email, subject, body, snippet, is_read, received_at, created_at FROM inbox_emails {$where} ORDER BY received_at DESC, id DESC LIMIT {$size} OFFSET {$offset}";
         $stmt = $this->db->prepare($selectSql);
         $stmt->execute($params);
         $emails = $stmt->fetchAll();

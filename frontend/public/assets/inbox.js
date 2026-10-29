@@ -250,7 +250,8 @@
       const search = $('#inbox-search').value.trim();
       const status = $('#inbox-filter').value;
       const size = $('#inbox-size').value;
-      const params = new URLSearchParams({ page: inboxPage, page_size: size, search, status });
+      const accountId = $('#inbox-account-filter')?.value || '';
+      const params = new URLSearchParams({ page: inboxPage, page_size: size, search, status, account_id: accountId });
 
       const data = await api('inbox?' + params);
       if (request !== inboxRequest) return;
@@ -315,8 +316,11 @@
                              .trim();
       }
       const threadCountPill = Number(email.thread_count) > 1 ? `<span class="thread-count-badge">${email.thread_count}</span>` : '';
+      const toEmail = email.to_email || 'ray@rslsolution.com';
+      const destBadge = `<span class="inbox-mailbox-badge" title="Received at ${escapeHtml(toEmail)}">${escapeHtml(toEmail)}</span>`;
       tdSubject.innerHTML = `
         <div class="inbox-preview-wrap">
+          ${destBadge}
           <span class="inbox-subject-text">${escapeHtml(email.subject || '(No subject)')}</span>
           ${threadCountPill}
           <span class="inbox-snippet-separator">—</span>
@@ -689,6 +693,11 @@
     searchTimer = setTimeout(loadInbox, 300);
   });
 
+  $('#inbox-account-filter')?.addEventListener('change', () => {
+    inboxPage = 1;
+    loadInbox();
+  });
+
   $('#inbox-filter')?.addEventListener('change', () => {
     inboxPage = 1;
     loadInbox();
@@ -719,9 +728,36 @@
     }
   });
 
+  function setInboxAccountOptions(accounts, userRole, assignedAccountId) {
+    const filterEl = $('#inbox-account-filter');
+    if (!filterEl) return;
+    const currentVal = filterEl.value;
+    filterEl.replaceChildren();
+    if (userRole === 'admin') {
+      const allOpt = document.createElement('option');
+      allOpt.value = '';
+      allOpt.textContent = 'All Mailboxes';
+      filterEl.append(allOpt);
+    }
+    for (const acc of (accounts || [])) {
+      const opt = document.createElement('option');
+      opt.value = acc.id;
+      opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+      if (acc.is_default && userRole === 'admin') opt.textContent += ' [Default]';
+      filterEl.append(opt);
+    }
+    if (userRole === 'member' && assignedAccountId) {
+      filterEl.value = String(assignedAccountId);
+      filterEl.disabled = true;
+    } else if (currentVal) {
+      filterEl.value = currentVal;
+    }
+  }
+
   window.loadInbox = loadInbox;
   window.updateInboxBadge = updateBadge;
   window.renderThreadStackHtml = renderThreadStackHtml;
   window.attachThreadEvents = attachThreadEvents;
+  window.setInboxAccountOptions = setInboxAccountOptions;
 })();
 

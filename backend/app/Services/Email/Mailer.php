@@ -6,6 +6,7 @@ use PHPMailer\PHPMailer\PHPMailer;
 
 final class Mailer
 {
+    public function __construct(private ?array $account = null) {}
     public function send(array $email): ?string
     {
         if ((getenv('MAIL_DRY_RUN') ?: 'true') !== 'false') return null;
@@ -123,11 +124,28 @@ final class Mailer
     private function configuredMailer(): PHPMailer
     {
         if (!class_exists(PHPMailer::class)) throw new \RuntimeException('Install Composer dependencies before sending.');
+        $account = $this->account;
+
+        $mail = new PHPMailer(true);
+        $mail->isSMTP();
+
+        if ($account && !empty($account['smtp_host']) && !empty($account['smtp_user'])) {
+            $mail->Host = $account['smtp_host'];
+            $mail->Port = (int) ($account['smtp_port'] ?? 465);
+            $mail->SMTPAuth = true;
+            $mail->Username = $account['smtp_user'];
+            $mail->Password = $account['smtp_pass'] ?? '';
+            $mail->SMTPSecure = $mail->Port === 465 ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Timeout = 30;
+            $mail->CharSet = 'UTF-8';
+            $fromName = !empty($account['name']) ? $account['name'] : (getenv('MAIL_FROM_NAME') ?: 'RSL Communications');
+            $mail->setFrom($account['email'], $fromName);
+            return $mail;
+        }
+
         foreach (['SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'MAIL_FROM_ADDRESS'] as $key) {
             if (!getenv($key)) throw new \RuntimeException('Mail configuration is incomplete.');
         }
-        $mail = new PHPMailer(true);
-        $mail->isSMTP();
         $mail->Host = getenv('SMTP_HOST');
         $mail->Port = (int) (getenv('SMTP_PORT') ?: 587);
         $mail->SMTPAuth = true;

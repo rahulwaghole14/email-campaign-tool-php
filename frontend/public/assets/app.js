@@ -41,6 +41,10 @@ function view(name) {
   if (name === 'sheets') window.loadSheets?.();
   if (name === 'inbox') window.loadInbox?.();
   if (name === 'sent') loadSentPage?.();
+  if (name === 'integrations') {
+    loadMailAccounts?.();
+    if (currentSession?.user?.role === 'admin') loadUsers?.();
+  }
   if (name === 'compose') {
     const titleEl = $('#compose-title');
     const submitLabel = $('#compose-submit-label');
@@ -951,6 +955,40 @@ async function init() {
         $('#logout').style.display = 'inline-flex';
       }
 
+      // Sidebar user profile badge
+      if (session.user) {
+        const badgeEl = $('#sidebar-user-badge');
+        const avatarEl = $('#sidebar-user-avatar');
+        const nameEl = $('#sidebar-user-name');
+        const roleEl = $('#sidebar-user-role-badge');
+        if (badgeEl) badgeEl.hidden = false;
+        if (nameEl) nameEl.textContent = session.user.name || 'Colleague';
+        if (avatarEl) {
+          const initial = (session.user.name || session.user.email || 'U').trim().charAt(0).toUpperCase();
+          avatarEl.textContent = initial;
+        }
+        if (roleEl) {
+          const isAdmin = (session.user.role === 'admin');
+          roleEl.textContent = isAdmin ? 'Admin' : 'Member';
+          roleEl.className = 'sidebar-user-role-badge ' + (isAdmin ? 'is-admin' : 'is-member');
+        }
+
+        // Show/hide team management
+        if (session.user.role !== 'admin') {
+          if ($('#tab-btn-team')) $('#tab-btn-team').hidden = true;
+          if ($('#btn-add-mailbox')) $('#btn-add-mailbox').hidden = true;
+        } else {
+          if ($('#tab-btn-team')) $('#tab-btn-team').hidden = false;
+          if ($('#btn-add-mailbox')) $('#btn-add-mailbox').hidden = false;
+        }
+      }
+
+      // Load mail accounts early
+      await loadMailAccounts();
+      if (session.user?.role === 'admin') {
+        loadUsers().catch(() => {});
+      }
+
       const activeHash = location.hash ? location.hash.replace(/^#/, '') : '';
       const savedView = activeHash || localStorage.getItem('rsl_active_view') || 'overview';
 
@@ -993,7 +1031,27 @@ async function init() {
 }
 $('#setup-form').addEventListener('submit', async event => { event.preventDefault(); const button = event.target.querySelector('.primary'); button.disabled = true; try { await api('setup', {method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(event.target)))}); event.target.reset(); await init(); notice('Administrator created. You are signed in.'); } catch(e) {notice(e.message,true);} finally {button.disabled = false;} });
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => view(button.dataset.view)));
-$('#login-form').addEventListener('submit', async event => { event.preventDefault(); const button = event.target.querySelector('.primary'); button.disabled = true; try { await api('login', {method:'POST', body:JSON.stringify({password:new FormData(event.target).get('password')})}); event.target.reset(); $('#notice').hidden = true; await init(); } catch(e) {notice(e.message, true);} finally {button.disabled = false;} });
+$('#login-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = event.target.querySelector('.primary');
+  button.disabled = true;
+  try {
+    const fd = new FormData(event.target);
+    const payload = { password: fd.get('password') };
+    const emailVal = fd.get('email');
+    if (emailVal && emailVal.trim()) {
+      payload.email = emailVal.trim();
+    }
+    await api('login', { method: 'POST', body: JSON.stringify(payload) });
+    event.target.reset();
+    $('#notice').hidden = true;
+    await init();
+  } catch(e) {
+    notice(e.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
 
 // Password Reset Modal Handlers
 $('#forgot-password')?.addEventListener('click', () => {
@@ -1232,6 +1290,11 @@ $('#compose-form').addEventListener('submit', async event => {
 
   try {
     const input = Object.fromEntries(new FormData(event.target));
+    if (currentSession?.user?.role === 'member' && currentSession?.user?.assigned_account_id) {
+      input.mail_account_id = currentSession.user.assigned_account_id;
+    } else if (input.mail_account_id) {
+      input.mail_account_id = Number(input.mail_account_id);
+    }
     input.idempotency_key = requestKey;
     input.send_now = true;
     if (currentAttachments.length) {
@@ -1240,6 +1303,7 @@ $('#compose-form').addEventListener('submit', async event => {
     const result = await api('emails', {method:'POST', body:JSON.stringify(input)});
     requestKey = crypto.randomUUID();
     event.target.reset();
+    populateComposeSender(currentMailAccounts);
     currentAttachments = [];
     renderComposeAttachments();
 
@@ -1260,6 +1324,7 @@ $('#compose-form').addEventListener('submit', async event => {
 });
 $('.compose-discard-btn')?.addEventListener('click', () => {
   $('#compose-form').reset();
+  populateComposeSender(currentMailAccounts);
   currentAttachments = [];
   renderComposeAttachments();
   notice('Draft discarded.');
@@ -1452,6 +1517,532 @@ $('#sent-refresh')?.addEventListener('click', async () => {
 window.addEventListener('hashchange', () => {
   const hash = location.hash ? location.hash.replace(/^#/, '') : 'overview';
   if (document.getElementById(hash)) view(hash);
+});
+
+/* ==========================================================================
+   MAIL ACCOUNTS & MULTI-USER RBAC MANAGEMENT
+   ========================================================================== */
+let currentMailAccounts = [];
+let currentTeamUsers = [];
+
+window.getActiveSenderAccount = function() {
+  const senderSelect = $('#compose-sender');
+  if (senderSelect && senderSelect.value) {
+    const found = currentMailAccounts.find(a => String(a.id) === String(senderSelect.value));
+    if (found) return found;
+  }
+  const defaultAcc = currentMailAccounts.find(a => a.is_default);
+  return defaultAcc || currentMailAccounts[0] || null;
+};
+
+async function loadMailAccounts() {
+  try {
+    const res = await api('mail-accounts');
+    currentMailAccounts = res.accounts || [];
+    renderMailAccountsConfig(currentMailAccounts);
+    populateComposeSender(currentMailAccounts);
+    if (window.setInboxAccountOptions && currentSession?.user) {
+      window.setInboxAccountOptions(currentMailAccounts, currentSession.user.role, currentSession.user.assigned_account_id);
+    }
+    const badge = $('#mailboxes-count-badge');
+    if (badge) badge.textContent = currentMailAccounts.length;
+  } catch (err) {
+    console.error('Failed to load mail accounts:', err);
+  }
+}
+
+function populateComposeSender(accounts) {
+  const select = $('#compose-sender');
+  const lockedWrap = $('#compose-sender-locked');
+  const lockedBadge = $('#compose-sender-badge');
+  const user = currentSession?.user;
+
+  if (!select) return;
+  select.replaceChildren();
+
+  if (user && user.role === 'member') {
+    const assigned = accounts.find(a => a.id === user.assigned_account_id) || accounts[0];
+    if (assigned) {
+      const opt = document.createElement('option');
+      opt.value = assigned.id;
+      opt.textContent = assigned.name ? `${assigned.name} <${assigned.email}>` : assigned.email;
+      opt.selected = true;
+      select.append(opt);
+      select.hidden = true;
+      if (lockedWrap && lockedBadge) {
+        lockedBadge.innerHTML = `<svg class="icon mini-icon" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> ${escapeHtml(assigned.name ? `${assigned.name} <${assigned.email}>` : assigned.email)}`;
+        lockedWrap.hidden = false;
+      }
+    }
+    return;
+  }
+
+  if (lockedWrap) lockedWrap.hidden = true;
+  select.hidden = false;
+
+  for (const acc of accounts) {
+    const opt = document.createElement('option');
+    opt.value = acc.id;
+    opt.textContent = acc.name ? `${acc.name} <${acc.email}>` : acc.email;
+    if (acc.is_default) {
+      opt.textContent += ' [Default]';
+      opt.selected = true;
+    }
+    select.append(opt);
+  }
+}
+
+function renderMailAccountsConfig(accounts) {
+  const tbody = $('#mailboxes-table-body');
+  if (!tbody) return;
+  tbody.replaceChildren();
+
+  if (!accounts || accounts.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">No mail accounts found. Click "Connect Mailbox" to add one.</td></tr>';
+    return;
+  }
+
+  const isAdmin = currentSession?.user?.role === 'admin';
+
+  for (const acc of accounts) {
+    const tr = document.createElement('tr');
+    
+    // Account cell
+    const tdAccount = document.createElement('td');
+    const defaultPill = acc.is_default ? '<span class="dash-badge green" style="margin-left:6px;font-size:10.5px">Default</span>' : '';
+    tdAccount.innerHTML = `
+      <div style="display:flex;align-items:center">
+        <div>
+          <strong style="color:#213129;display:block">${escapeHtml(acc.name || 'Mail Account')} ${defaultPill}</strong>
+          <small class="muted" style="font-size:12px">${escapeHtml(acc.email)}</small>
+        </div>
+      </div>
+    `;
+
+    // SMTP cell
+    const tdSmtp = document.createElement('td');
+    tdSmtp.innerHTML = `<span style="font-family:monospace;font-size:12px">${escapeHtml(acc.smtp_host)}:${acc.smtp_port}</span> <span class="dash-badge green" style="font-size:10px">SSL</span>`;
+
+    // IMAP cell
+    const tdImap = document.createElement('td');
+    tdImap.innerHTML = `<span style="font-family:monospace;font-size:12px">${escapeHtml(acc.imap_host)}:${acc.imap_port}</span> <span class="dash-badge green" style="font-size:10px">SSL</span>`;
+
+    // Status cell
+    const tdStatus = document.createElement('td');
+    const statusClass = acc.status === 'active' ? 'green' : 'amber';
+    tdStatus.innerHTML = `<span class="dash-badge ${statusClass}">${escapeHtml(acc.status.toUpperCase())}</span>`;
+
+    // Actions cell
+    const tdActions = document.createElement('td');
+    tdActions.style.textAlign = 'right';
+    tdActions.style.paddingRight = '16px';
+    const group = document.createElement('div');
+    group.className = 'table-btn-group';
+
+    // Test button
+    const testBtn = document.createElement('button');
+    testBtn.type = 'button';
+    testBtn.className = 'quiet';
+    testBtn.textContent = 'Test';
+    testBtn.title = 'Test connection to Hostinger SMTP & IMAP';
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing…';
+      try {
+        const res = await api('mail-accounts/test', {
+          method: 'POST',
+          body: JSON.stringify({ id: acc.id })
+        });
+        notice(`✓ Connection verified: SMTP (${res.smtp}) & IMAP (${res.imap}) online.`);
+      } catch (err) {
+        notice(`Connection test failed: ${err.message}`, true);
+      } finally {
+        testBtn.disabled = false;
+        testBtn.textContent = 'Test';
+      }
+    });
+    group.append(testBtn);
+
+    if (isAdmin) {
+      // Edit button
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'quiet';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openMailboxModal(acc));
+      group.append(editBtn);
+
+      // Delete button
+      if (!acc.is_default) {
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'quiet';
+        delBtn.style.color = '#c5221f';
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', async () => {
+          if (!confirm(`Are you sure you want to disconnect mailbox "${acc.email}"?`)) return;
+          try {
+            await api(`mail-accounts/${acc.id}`, { method: 'DELETE' });
+            notice(`Mailbox ${acc.email} disconnected.`);
+            await loadMailAccounts();
+          } catch (err) {
+            notice(err.message, true);
+          }
+        });
+        group.append(delBtn);
+      }
+    }
+
+    tdActions.append(group);
+    tr.append(tdAccount, tdSmtp, tdImap, tdStatus, tdActions);
+    tbody.append(tr);
+  }
+}
+
+function openMailboxModal(acc = null) {
+  const modal = $('#mailbox-modal');
+  const title = $('#mailbox-modal-title');
+  const banner = $('#mb-test-result');
+  if (!modal) return;
+
+  $('#mailbox-form').reset();
+  if (banner) { banner.hidden = true; banner.textContent = ''; banner.className = 'modal-test-banner'; }
+
+  if (acc) {
+    if (title) title.textContent = 'Edit Mailbox Configuration';
+    $('#mailbox-id').value = acc.id;
+    $('#mb-name').value = acc.name || '';
+    $('#mb-email').value = acc.email || '';
+    $('#mb-smtp-host').value = acc.smtp_host || 'smtp.hostinger.com';
+    $('#mb-smtp-port').value = acc.smtp_port || 465;
+    $('#mb-smtp-user').value = acc.smtp_user || '';
+    $('#mb-smtp-pass').value = '';
+    $('#mb-same-creds').checked = (acc.smtp_host === acc.imap_host && acc.smtp_user === acc.imap_user);
+    $('#mb-imap-host').value = acc.imap_host || 'imap.hostinger.com';
+    $('#mb-imap-port').value = acc.imap_port || 993;
+    $('#mb-imap-user').value = acc.imap_user || '';
+    $('#mb-imap-pass').value = '';
+    $('#mb-imap-section').hidden = $('#mb-same-creds').checked;
+  } else {
+    if (title) title.textContent = 'Connect New Mailbox';
+    $('#mailbox-id').value = '';
+    $('#mb-name').value = '';
+    $('#mb-email').value = '';
+    $('#mb-smtp-host').value = 'smtp.hostinger.com';
+    $('#mb-smtp-port').value = 465;
+    $('#mb-smtp-user').value = '';
+    $('#mb-smtp-pass').value = '';
+    $('#mb-same-creds').checked = true;
+    $('#mb-imap-host').value = 'imap.hostinger.com';
+    $('#mb-imap-port').value = 993;
+    $('#mb-imap-user').value = '';
+    $('#mb-imap-pass').value = '';
+    $('#mb-imap-section').hidden = true;
+  }
+
+  modal.showModal();
+}
+
+async function loadUsers() {
+  try {
+    const res = await api('users');
+    currentTeamUsers = res.users || [];
+    renderUsersConfig(currentTeamUsers);
+    const badge = $('#team-count-badge');
+    if (badge) badge.textContent = currentTeamUsers.length;
+  } catch (err) {
+    console.error('Failed to load team users:', err);
+  }
+}
+
+function renderUsersConfig(users) {
+  const tbody = $('#users-table-body');
+  if (!tbody) return;
+  tbody.replaceChildren();
+
+  if (!users || users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">No users found.</td></tr>';
+    return;
+  }
+
+  const currentUserId = currentSession?.user?.id;
+
+  for (const u of users) {
+    const tr = document.createElement('tr');
+    
+    // User name & email
+    const tdUser = document.createElement('td');
+    const isMe = (u.id === currentUserId);
+    tdUser.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="sidebar-user-avatar" style="width:28px;height:28px;font-size:12px">${escapeHtml((u.name || u.email || 'U').charAt(0).toUpperCase())}</div>
+        <div>
+          <strong style="color:#213129;display:block">${escapeHtml(u.name || 'Colleague')} ${isMe ? '<small class="dash-badge green" style="font-size:10px">You</small>' : ''}</strong>
+          <small class="muted" style="font-size:12px">${escapeHtml(u.email)}</small>
+        </div>
+      </div>
+    `;
+
+    // Role
+    const tdRole = document.createElement('td');
+    const isAdmin = u.role === 'admin';
+    tdRole.innerHTML = `<span class="dash-badge ${isAdmin ? 'green' : 'blue'}" style="font-weight:700">${isAdmin ? 'Administrator' : 'Member'}</span>`;
+
+    // Assigned Mailbox
+    const tdMailbox = document.createElement('td');
+    if (u.account_email) {
+      tdMailbox.innerHTML = `<span class="inbox-mailbox-badge" style="margin:0">${escapeHtml(u.account_email)}</span>`;
+    } else {
+      tdMailbox.innerHTML = `<span class="muted" style="font-size:12px">${isAdmin ? 'All Connected Mailboxes' : 'None assigned'}</span>`;
+    }
+
+    // Created date
+    const tdCreated = document.createElement('td');
+    tdCreated.className = 'muted';
+    tdCreated.style.fontSize = '12px';
+    tdCreated.textContent = u.created_at ? new Date(u.created_at).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : '—';
+
+    // Actions
+    const tdActions = document.createElement('td');
+    tdActions.style.textAlign = 'right';
+    tdActions.style.paddingRight = '16px';
+    const group = document.createElement('div');
+    group.className = 'table-btn-group';
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'quiet';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openUserModal(u));
+    group.append(editBtn);
+
+    if (!isMe && (u.role !== 'admin' || users.filter(x => x.role === 'admin').length > 1)) {
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'quiet';
+      delBtn.style.color = '#c5221f';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async () => {
+        if (!confirm(`Are you sure you want to remove colleague "${u.name || u.email}"?`)) return;
+        try {
+          await api(`users/${u.id}`, { method: 'DELETE' });
+          notice(`User ${u.email} removed.`);
+          await loadUsers();
+        } catch (err) {
+          notice(err.message, true);
+        }
+      });
+      group.append(delBtn);
+    }
+
+    tdActions.append(group);
+    tr.append(tdUser, tdRole, tdMailbox, tdCreated, tdActions);
+    tbody.append(tr);
+  }
+}
+
+function openUserModal(u = null) {
+  const modal = $('#user-modal');
+  const title = $('#user-modal-title');
+  const accountSelect = $('#u-account');
+  const passHint = $('#u-pass-hint');
+  const passInput = $('#u-password');
+  if (!modal) return;
+
+  $('#user-form').reset();
+
+  // Populate accounts in dropdown
+  if (accountSelect) {
+    accountSelect.replaceChildren();
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = 'Select an assigned mailbox...';
+    accountSelect.append(noneOpt);
+    for (const acc of currentMailAccounts) {
+      const opt = document.createElement('option');
+      opt.value = acc.id;
+      opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+      if (acc.is_default) opt.textContent += ' [Default]';
+      accountSelect.append(opt);
+    }
+  }
+
+  if (u) {
+    if (title) title.textContent = 'Edit Colleague Permissions';
+    $('#user-id').value = u.id;
+    $('#u-name').value = u.name || '';
+    $('#u-email').value = u.email || '';
+    $('#u-role').value = u.role || 'member';
+    if (accountSelect && u.assigned_account_id) {
+      accountSelect.value = String(u.assigned_account_id);
+    }
+    if (passHint) passHint.hidden = false;
+    if (passInput) passInput.required = false;
+  } else {
+    if (title) title.textContent = 'Add New Colleague';
+    $('#user-id').value = '';
+    $('#u-name').value = '';
+    $('#u-email').value = '';
+    $('#u-role').value = 'member';
+    if (passHint) passHint.hidden = true;
+    if (passInput) passInput.required = true;
+  }
+
+  modal.showModal();
+}
+
+// Mailbox Modal Events
+$('#btn-add-mailbox')?.addEventListener('click', () => openMailboxModal());
+$('#close-mailbox-modal')?.addEventListener('click', () => $('#mailbox-modal')?.close());
+$('#btn-cancel-mailbox')?.addEventListener('click', () => $('#mailbox-modal')?.close());
+
+$('#mb-same-creds')?.addEventListener('change', e => {
+  const imapSec = $('#mb-imap-section');
+  if (imapSec) imapSec.hidden = e.target.checked;
+});
+
+$('#btn-test-mailbox')?.addEventListener('click', async () => {
+  const banner = $('#mb-test-result');
+  const testBtn = $('#btn-test-mailbox');
+  if (banner) {
+    banner.hidden = false;
+    banner.className = 'modal-test-banner testing';
+    banner.textContent = 'Testing socket connection to Hostinger SMTP & IMAP…';
+  }
+  if (testBtn) testBtn.disabled = true;
+
+  try {
+    const isSame = $('#mb-same-creds').checked;
+    const email = $('#mb-email').value.trim();
+    const smtpUser = $('#mb-smtp-user').value.trim() || email;
+    const smtpPass = $('#mb-smtp-pass').value;
+    const payload = {
+      id: $('#mailbox-id').value ? Number($('#mailbox-id').value) : null,
+      email: email,
+      smtp_host: $('#mb-smtp-host').value.trim(),
+      smtp_port: Number($('#mb-smtp-port').value),
+      smtp_user: smtpUser,
+      smtp_pass: smtpPass,
+      imap_host: isSame ? $('#mb-smtp-host').value.trim() : $('#mb-imap-host').value.trim(),
+      imap_port: isSame ? 993 : Number($('#mb-imap-port').value),
+      imap_user: isSame ? smtpUser : $('#mb-imap-user').value.trim(),
+      imap_pass: isSame ? smtpPass : $('#mb-imap-pass').value
+    };
+
+    const res = await api('mail-accounts/test', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (banner) {
+      banner.className = 'modal-test-banner success';
+      banner.textContent = `✓ Success! Hostinger SMTP connected (${res.smtp}) and IMAP connected (${res.imap}).`;
+    }
+  } catch (err) {
+    if (banner) {
+      banner.className = 'modal-test-banner error';
+      banner.textContent = `✕ Connection test failed: ${err.message}`;
+    }
+  } finally {
+    if (testBtn) testBtn.disabled = false;
+  }
+});
+
+$('#mailbox-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const btn = $('#btn-save-mailbox');
+  if (btn) btn.disabled = true;
+
+  try {
+    const isSame = $('#mb-same-creds').checked;
+    const email = $('#mb-email').value.trim();
+    const smtpUser = $('#mb-smtp-user').value.trim() || email;
+    const smtpPass = $('#mb-smtp-pass').value;
+    const idVal = $('#mailbox-id').value;
+
+    const payload = {
+      name: $('#mb-name').value.trim(),
+      email: email,
+      smtp_host: $('#mb-smtp-host').value.trim(),
+      smtp_port: Number($('#mb-smtp-port').value),
+      smtp_user: smtpUser,
+      imap_host: isSame ? $('#mb-smtp-host').value.trim() : $('#mb-imap-host').value.trim(),
+      imap_port: isSame ? 993 : Number($('#mb-imap-port').value),
+      imap_user: isSame ? smtpUser : $('#mb-imap-user').value.trim()
+    };
+    if (idVal) payload.id = Number(idVal);
+    if (smtpPass) payload.smtp_pass = smtpPass;
+    const imapPass = isSame ? smtpPass : $('#mb-imap-pass').value;
+    if (imapPass) payload.imap_pass = imapPass;
+
+    await api('mail-accounts', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    notice(idVal ? `Mailbox ${email} updated successfully.` : `Mailbox ${email} connected successfully!`);
+    $('#mailbox-modal')?.close();
+    await loadMailAccounts();
+  } catch (err) {
+    const banner = $('#mb-test-result');
+    if (banner) {
+      banner.hidden = false;
+      banner.className = 'modal-test-banner error';
+      banner.textContent = err.message;
+    } else {
+      notice(err.message, true);
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
+
+// User Modal Events
+$('#btn-add-member')?.addEventListener('click', () => openUserModal());
+$('#close-user-modal')?.addEventListener('click', () => $('#user-modal')?.close());
+$('#btn-cancel-user')?.addEventListener('click', () => $('#user-modal')?.close());
+
+$('#user-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const btn = $('#btn-save-user');
+  if (btn) btn.disabled = true;
+
+  try {
+    const idVal = $('#user-id').value;
+    const payload = {
+      name: $('#u-name').value.trim(),
+      email: $('#u-email').value.trim(),
+      role: $('#u-role').value,
+      assigned_account_id: $('#u-account').value ? Number($('#u-account').value) : null
+    };
+    if (idVal) payload.id = Number(idVal);
+    const pass = $('#u-password').value;
+    if (pass) payload.password = pass;
+
+    await api('users', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    notice(idVal ? `Colleague updated successfully.` : `Colleague invited and configured successfully!`);
+    $('#user-modal')?.close();
+    await loadUsers();
+  } catch (err) {
+    notice(err.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
+
+// Integrations Tab Navigation
+document.querySelectorAll('#integrations-tabs .config-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#integrations-tabs .config-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.config-tab-content').forEach(c => c.hidden = true);
+    btn.classList.add('active');
+    const target = document.getElementById(btn.dataset.tab);
+    if (target) target.hidden = false;
+  });
 });
 
 init();

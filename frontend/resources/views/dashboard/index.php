@@ -4,18 +4,18 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 ?>
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL · Communication Desk</title><link rel="stylesheet" href="/assets/app.css?v=54"><script>try{var v=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}}catch(e){}</script><script src="/assets/app.js?v=54" defer></script><script src="/assets/sheets.js?v=36" defer></script><script src="/assets/inbox.js?v=36" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL · Communication Desk</title><link rel="stylesheet" href="/assets/app.css?v=55"><script>try{var v=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}}catch(e){}</script><script src="/assets/app.js?v=55" defer></script><script src="/assets/sheets.js?v=37" defer></script><script src="/assets/inbox.js?v=37" defer></script></head>
 <body class="<?= $isAuthenticated ? 'is-authenticated' : 'is-unauthenticated' ?>">
 <aside><a class="brand" href="/"><img src="/assets/rsl-logo.png?v=52" alt="RSL" class="sidebar-rsl-logo" width="76" height="36"><span>WORKSPACE</span></a><div class="workspace">Communication Desk<small>EMAIL OPERATIONS</small></div><div class="sidebar-action-wrap"><button type="button" class="sidebar-compose-btn" data-view="compose"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg><span>Compose</span></button></div><nav aria-label="Main navigation">
 <button class="nav active" data-view="overview"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Overview</span></button>
 <button class="nav" data-view="inbox"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7Z"/><path d="M5.45 5.11 2 12v0h20l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><span>Inbox</span><span id="nav-inbox-badge" class="badge-count" hidden>0</span></button>
 <button class="nav" data-view="sent"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span>Sent emails</span></button>
 <button class="nav" data-view="sheets"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 9v12"/></svg><span>Sheets</span></button>
-<button class="nav" data-view="integrations"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 8-8M7 15l-2 2a3 3 0 0 0 4 4l4-4M11 7l4-4a3 3 0 0 1 4 4l-2 2M8 8l8 8"/></svg><span>Integrations</span></button></nav><div class="sidebar-foot"><button id="logout" class="sidebar-logout" <?= $isAuthenticated ? '' : 'hidden' ?> title="Sign out of workspace"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Sign out</span></button><div class="sidebar-platform-label">Email Automation Platform</div></div></aside>
+<button class="nav" data-view="integrations"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 8-8M7 15l-2 2a3 3 0 0 0 4 4l4-4M11 7l4-4a3 3 0 0 1 4 4l-2 2M8 8l8 8"/></svg><span>Integrations</span></button></nav><div class="sidebar-foot"><div class="sidebar-user-badge" id="sidebar-user-badge" <?= $isAuthenticated ? '' : 'hidden' ?>><div class="sidebar-user-avatar" id="sidebar-user-avatar">A</div><div class="sidebar-user-info"><span class="sidebar-user-name" id="sidebar-user-name"><?= htmlspecialchars($_SESSION['user_name'] ?? 'Administrator') ?></span><span class="sidebar-user-role-badge <?= (($_SESSION['user_role'] ?? 'admin') === 'admin') ? 'is-admin' : 'is-member' ?>" id="sidebar-user-role-badge"><?= (($_SESSION['user_role'] ?? 'admin') === 'admin') ? 'Admin' : 'Member' ?></span></div></div><button id="logout" class="sidebar-logout" <?= $isAuthenticated ? '' : 'hidden' ?> title="Sign out of workspace"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Sign out</span></button><div class="sidebar-platform-label">Email Automation Platform</div></div></aside>
 <main>
 <div id="notice" role="status" hidden></div>
 <section id="setup" <?= ($isSetupAllowed && !$isAuthenticated) ? '' : 'hidden' ?>><div class="auth-box"><div class="auth-brand-badge"><img src="/assets/rsl-logo.png?v=52" alt="RSL Solution" class="auth-rsl-logo" width="120" height="57"><div class="auth-brand-text"><span class="auth-brand-name">WORKSPACE</span><span class="auth-brand-sub">Communication Desk</span></div></div><div class="card login-card"><div class="login-card-head"><div class="eyebrow">FIRST-TIME SETUP</div><h1 class="login-title">Create your administrator</h1><p class="login-desc">Choose your password to access the communication desk. This setup is available only from this computer.</p></div><form id="setup-form"><label>Password<input name="password" type="password" autocomplete="new-password" minlength="6" maxlength="64" required></label><label>Confirm password<input name="confirmation" type="password" autocomplete="new-password" minlength="6" maxlength="64" required></label><p class="muted" style="margin:8px 0 16px;font-size:12px;">Use at least 6 characters. Your password is stored securely as a hash.</p><button class="primary" style="width:100%;min-height:44px;">Create administrator</button></form></div><div class="auth-foot-note">RSL Communication Desk · One workspace. Every conversation.</div></div></section>
-<section id="login" <?= (!$isSetupAllowed && !$isAuthenticated) ? '' : 'hidden' ?>><div class="auth-box"><div class="auth-brand-badge"><img src="/assets/rsl-logo.png?v=52" alt="RSL Solution" class="auth-rsl-logo" width="120" height="57"><div class="auth-brand-text"><span class="auth-brand-name">WORKSPACE</span><span class="auth-brand-sub">Communication Desk</span></div></div><div class="card login-card"><div class="login-card-head"><h1 class="login-title">Welcome to your desk</h1><p class="login-desc">Sign in to manage outgoing messages and track email activity.</p></div><form id="login-form"><label><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;"><span style="font-size:13px;font-weight:600;color:#213129;">Administrator password</span><button type="button" id="forgot-password" class="auth-text-link">Forgot password?</button></div><input name="password" id="login-password" type="password" autocomplete="current-password" required placeholder="••••••••"></label><button class="primary auth-submit-btn" type="submit" id="login-submit-btn">Sign in to workspace →</button><p id="setup-help" class="muted" hidden style="margin-top:14px;">Set ADMIN_PASSWORD_HASH in backend/.env to enable sign-in.</p></form></div><div class="auth-foot-note">RSL Communication Desk · One workspace. Every conversation.</div></div></section>
+<section id="login" <?= (!$isSetupAllowed && !$isAuthenticated) ? '' : 'hidden' ?>><div class="auth-box"><div class="auth-brand-badge"><img src="/assets/rsl-logo.png?v=52" alt="RSL Solution" class="auth-rsl-logo" width="120" height="57"><div class="auth-brand-text"><span class="auth-brand-name">WORKSPACE</span><span class="auth-brand-sub">Communication Desk</span></div></div><div class="card login-card"><div class="login-card-head"><h1 class="login-title">Welcome to your desk</h1><p class="login-desc">Sign in to manage outgoing messages and track email activity.</p></div><form id="login-form"><label style="margin-bottom:12px;"><span style="font-size:13px;font-weight:600;color:#213129;display:block;margin-bottom:6px;">Work email</span><input name="email" id="login-email" type="email" autocomplete="username" placeholder="name@rslsolution.com (or empty for default admin)"></label><label><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;"><span style="font-size:13px;font-weight:600;color:#213129;">Password</span><button type="button" id="forgot-password" class="auth-text-link">Forgot password?</button></div><input name="password" id="login-password" type="password" autocomplete="current-password" required placeholder="••••••••"></label><button class="primary auth-submit-btn" type="submit" id="login-submit-btn">Sign in to workspace →</button><p id="setup-help" class="muted" hidden style="margin-top:14px;">Set ADMIN_PASSWORD_HASH in backend/.env to enable sign-in.</p></form></div><div class="auth-foot-note">RSL Communication Desk · One workspace. Every conversation.</div></div></section>
 <div id="app" <?= $isAuthenticated ? '' : 'hidden' ?>>
 <section id="overview" class="view" hidden>
 <div class="dash-header">
@@ -248,7 +248,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 <section id="inbox" class="view" hidden>
 <div class="title-row inbox-title-row"><div><div class="eyebrow">INCOMING &amp; REPLIES</div><h1 class="inbox-heading">Inbox <span id="inbox-header-badge" class="inbox-heading-badge" hidden>0</span></h1><p class="muted inbox-subheading"><span class="inbox-account-pill" id="inbox-account-pill"><span class="status-indicator-dot"></span>Connected Account</span><span id="inbox-last-sync" class="inbox-last-sync-label"></span></p></div><div class="inbox-header-actions"><button class="primary inbox-sync-btn" id="inbox-sync"><svg class="icon sync-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M19 12a7 7 0 0 0-12-5L4 10M5 12a7 7 0 0 0 12 5l3-3"/></svg><span>Sync Inbox</span></button></div></div>
 <div class="card table-card" style="margin-top:20px"><div class="queue-header"><div class="section-title"><div><h2>Incoming messages</h2><p class="muted">Click any message to read full content or send a reply</p></div></div>
-<div class="queue-toolbar"><div class="search-field"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="inbox-search" type="search" placeholder="Search mail..." aria-label="Search inbox"></div><select id="inbox-filter" aria-label="Filter inbox by read status"><option value="">All messages</option><option value="unread">Unread only</option><option value="read">Read only</option></select><button class="quiet" id="inbox-refresh"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M19 12a7 7 0 0 0-12-5L4 10M5 12a7 7 0 0 0 12 5l3-3"/></svg><span>Refresh</span></button></div>
+<div class="queue-toolbar"><div class="search-field"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="inbox-search" type="search" placeholder="Search mail..." aria-label="Search inbox"></div><select id="inbox-account-filter" aria-label="Filter inbox by mailbox"><option value="">All Mailboxes</option></select><select id="inbox-filter" aria-label="Filter inbox by read status"><option value="">All messages</option><option value="unread">Unread only</option><option value="read">Read only</option></select><button class="quiet" id="inbox-refresh"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M19 12a7 7 0 0 0-12-5L4 10M5 12a7 7 0 0 0 12 5l3-3"/></svg><span>Refresh</span></button></div>
 </div><div class="table-wrap"><table><thead><tr><th style="width:220px">Sender</th><th>Subject &amp; preview</th><th style="width:95px;text-align:right">Received</th><th style="width:180px;text-align:right;padding-right:18px">Action</th></tr></thead><tbody id="inbox-rows"></tbody></table></div><div class="pagination-bar"><label>Rows per page<select id="inbox-size"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></label><span id="inbox-range" aria-live="polite"></span><div class="pagination-buttons"><button id="inbox-prev" class="quiet">Previous</button><span id="inbox-page"></span><button id="inbox-next" class="quiet">Next</button></div></div></div>
 </section>
 <section id="sent" class="view" hidden>
@@ -326,6 +326,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 <div class="compose-heading"><div><div class="eyebrow">NEW DISPATCH</div><h1 id="compose-title">Compose email</h1></div></div>
 <form id="compose-form" class="card compose-card">
 <div class="compose-fields">
+<div class="compose-row sender-row" id="compose-sender-row"><span class="compose-label">From</span><div class="compose-sender-wrap"><select id="compose-sender" name="mail_account_id" class="compose-input compose-select" aria-label="Send As Mailbox"></select><div class="compose-sender-locked" id="compose-sender-locked" hidden><span class="sender-badge" id="compose-sender-badge"></span></div></div></div>
 <div class="compose-row recipient-row"><span class="compose-label">To</span><input id="compose-to" name="recipient" type="email" required placeholder="recipient@example.com" autocomplete="email" class="compose-input"><div class="recipient-options" aria-label="Additional recipients"><button type="button" class="recipient-toggle" data-recipient="cc" aria-expanded="false" aria-controls="compose-cc-field">Cc</button><button type="button" class="recipient-toggle" data-recipient="bcc" aria-expanded="false" aria-controls="compose-bcc-field">Bcc</button></div></div>
 <div class="compose-row optional-row" id="compose-cc-field" hidden><span class="compose-label">Cc</span><input name="cc" disabled placeholder="Separate multiple emails with commas" class="compose-input"></div>
 <div class="compose-row optional-row" id="compose-bcc-field" hidden><span class="compose-label">Bcc</span><input name="bcc" disabled placeholder="Separate multiple emails with commas" class="compose-input"></div>
@@ -424,5 +425,280 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 </div>
 <div class="card sheet-preview" id="sheet-preview" hidden><div class="sheet-workspace-header"><button type="button" class="quiet" id="sheet-back-btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>All sheets</button><div class="sheet-workspace-title-wrap"><h1 id="source-title" class="sheet-workspace-title"></h1><p id="source-summary" class="muted"></p></div><div class="sheet-controls"><span id="sheet-sync-status" class="sheet-sync-pill"><svg viewBox="0 0 24 24" class="icon" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Live Sync Active</span><button id="source-mapping" class="quiet">Column mapping</button><a id="open-sheet" class="quiet" target="_blank" rel="noopener noreferrer">Open in Google Sheets</a><button id="refresh-sheet" class="quiet">Refresh rows</button><button type="button" class="primary" id="sheet-bulk-send-btn" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span id="sheet-bulk-send-label">Send All Ready</span></button></div></div><p id="source-edit-note" class="muted"></p><div class="sheet-filter-tabs" id="sheet-quick-tabs"><button type="button" class="sheet-tab-btn active" data-tab-filter="">All records <span class="tab-count" id="count-all-records">0</span></button><button type="button" class="sheet-tab-btn" data-tab-filter="ready">Ready to send <span class="tab-count" id="count-ready-records">0</span></button><button type="button" class="sheet-tab-btn" data-tab-filter="sent">Sent emails <span class="tab-count" id="count-sent-records">0</span></button><button type="button" class="sheet-tab-btn" data-tab-filter="issues">Needs attention <span class="tab-count" id="count-issues-records">0</span></button></div><div class="sheet-search-toolbar"><div class="search-field"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="sheet-search" type="search" placeholder="Search ID, agency, email, or subject" aria-label="Search sheet records"></div><select id="sheet-status" aria-label="Filter sheet records"><option value="">All records</option><option value="issues">Needs attention</option><option value="ready">Ready to send</option><option value="not_queued">Not queued</option><option value="pending">Pending</option><option value="sent">Sent</option><option value="failed">Failed</option><option value="dry_run">Test emails</option></select></div><div id="batch-actions" class="batch-toolbar" hidden><div class="batch-info-group"><span id="batch-count-label">0 rows selected</span><button type="button" class="batch-link" id="batch-select-all-sheet">Select all ready across sheet</button><button type="button" class="batch-link" id="batch-clear-btn">Clear selection</button></div><button type="button" class="primary" id="batch-send-btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span>Send selected</span></button></div><div class="table-wrap"><table><thead><tr><th style="width:36px;text-align:center"><input type="checkbox" id="sheet-select-all" class="sheet-checkbox" title="Select all valid rows"></th><th>ID / agency</th><th>Email</th><th>Subject</th><th>Status</th><th>Actions</th></tr></thead><tbody id="sheet-rows"></tbody></table></div><div class="sheet-pagination pagination-bar"><label>Rows per page<select id="sheet-size"><option>10</option><option>25</option><option>50</option><option>100</option></select></label><span id="sheet-range" aria-live="polite"></span><button id="sheet-prev" class="quiet">Previous</button><span id="sheet-page"></span><button id="sheet-next" class="quiet">Next</button></div></div>
 <dialog id="sheet-editor" aria-labelledby="sheet-editor-title"><form id="sheet-edit-form"><div class="queue-header"><div><h2 id="sheet-editor-title">Edit record</h2><p id="edit-record-id" class="muted"></p></div><button type="button" id="close-editor" class="quiet">Close</button></div><p class="muted">Only changed fields are saved. Keep this sheet free of simultaneous edits while saving.</p><div id="edit-fields"></div><p id="edit-error" role="alert" hidden></p><div class="form-footer"><span id="edit-save-note" class="muted">Changes are saved to this source.</span><button type="submit" class="primary">Save changes</button></div></form></dialog>
-</section><section id="integrations" class="view" hidden><div class="eyebrow">CONNECTED SERVICES</div><h1>Connect your workflow.</h1><p class="muted">Active and available integrations in your platform.</p><div class="integration-grid"><article class="card"><span class="badge sent">Connected &amp; Live</span><h2>Hostinger SMTP</h2><p>Live outgoing mail via smtp.hostinger.com:465.</p></article><article class="card"><span class="badge sent">Connected &amp; Live</span><h2>Hostinger IMAP Inbox</h2><p>Live incoming synchronization via imap.hostinger.com:993.</p><button class="quiet" data-view="inbox">Open Inbox</button></article><article class="card"><span class="badge">Available to connect</span><h2>Google Sheets</h2><p>Add sheet links, map columns, and edit records from your workspace.</p><button class="quiet" data-view="sheets">Manage Google Sheets</button></article><article class="card"><span class="badge">Disabled</span><h2>Automatic replies</h2><p>Requires rule configuration and human-review workflows before it can be enabled.</p></article></div></section>
-</div><footer>RSL Communication Desk <span>One workspace. Every conversation.</span></footer><dialog id="email-detail" aria-labelledby="email-detail-tag"><div class="gmail-detail-toolbar"><div class="gmail-toolbar-left"><span class="email-id-tag" id="email-detail-tag">Email</span><span class="email-delivery-pill" id="email-detail-pill">● Delivered</span></div><div class="gmail-toolbar-right"><button type="button" class="gmail-tool-btn" id="close-email-detail" aria-label="Close dialog">Close</button></div></div><div class="gmail-detail-scroll"><p id="email-detail-message" class="muted" role="status" hidden></p><div id="email-detail-content"></div></div></dialog><dialog id="inbox-detail" aria-labelledby="inbox-detail-title"><div class="queue-header"><h2 id="inbox-detail-title">Message details</h2><div class="dialog-actions"><button type="button" class="primary" id="inbox-reply-btn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v2.5"/></svg>Reply</button><button type="button" class="quiet" id="inbox-toggle-read-btn">Mark unread</button><button type="button" class="quiet" id="close-inbox-detail">Close</button></div></div><p id="inbox-detail-message" class="muted" role="status"></p><div id="inbox-detail-content"></div></dialog><dialog id="reset-dialog" aria-labelledby="reset-title"><div class="reset-dialog-wrap"><div class="queue-header"><h2 id="reset-title">Reset Administrator Password</h2><button type="button" id="close-reset" class="reset-close-btn" aria-label="Close dialog">✕</button></div><div id="reset-step-1"><p class="muted reset-subtitle">Enter your administrator email address. We'll send a 6-digit verification code to your inbox.</p><form id="reset-request-form"><label>Administrator email<input id="reset-req-email" name="email" type="email" placeholder="e.g. ray@rslsolution.com" required autocomplete="email"></label><p id="reset-req-error" role="alert" class="email-detail-error" hidden></p><div class="form-footer reset-footer"><button class="primary reset-submit-btn" type="submit" id="reset-req-btn">Send verification code →</button></div></form><div id="reset-local-bypass-wrap" class="reset-bypass-card" hidden><button type="button" class="reset-bypass-btn" id="reset-local-bypass-btn">Running on local computer? Reset directly →</button></div></div><div id="reset-step-2" hidden><p class="muted reset-subtitle" id="reset-sent-notice">A 6-digit code was sent to your email. Enter it below along with your new password.</p><form id="reset-verify-form"><label>6-Digit verification code<input id="reset-verify-code" name="code" type="text" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required autocomplete="one-time-code"></label><label>New password<input id="reset-verify-password" name="password" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="At least 6 characters"></label><label>Confirm new password<input id="reset-verify-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="Re-enter password"></label><p id="reset-verify-error" role="alert" class="email-detail-error" hidden></p><div class="form-footer reset-footer"><button type="button" id="reset-back-to-step1" class="reset-back-btn">← Back</button><button class="primary reset-submit-btn" type="submit" id="reset-verify-btn">Save &amp; Sign in →</button></div></form></div><div id="reset-step-local" hidden><p class="muted reset-subtitle">Local computer access verified. Set a new administrator password directly.</p><form id="reset-local-form"><label>New password<input id="reset-local-password" name="password" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="At least 6 characters"></label><label>Confirm new password<input id="reset-local-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="Re-enter password"></label><p id="reset-local-error" role="alert" class="email-detail-error" hidden></p><div class="form-footer reset-footer"><button type="button" id="reset-local-back" class="reset-back-btn">← Back</button><button class="primary reset-submit-btn" type="submit">Save &amp; Sign in →</button></div></form></div></div></dialog><dialog id="batch-progress-dialog" class="batch-progress-dialog" aria-labelledby="batch-progress-title"><div class="batch-modal-wrap"><div class="batch-modal-header"><div class="batch-modal-status-badge"><span class="status-dot pulsing"></span><span id="batch-progress-badge">Dispatched live via Hostinger SMTP</span></div><h2 id="batch-progress-title">Sending emails…</h2><p id="batch-progress-subtitle" class="muted">Live SMTP dispatch in progress. Please keep this tab open.</p></div><div class="batch-meter-section"><div class="batch-counter-row"><span class="batch-counter-label" id="batch-counter-text">0 / 0 sent</span><span class="batch-counter-percent" id="batch-counter-percent">0%</span></div><div class="batch-progress-track"><div class="batch-progress-fill" id="batch-progress-bar" style="width: 0%"></div></div></div><div class="batch-stats-grid"><div class="batch-stat-card is-success"><span class="batch-stat-num" id="batch-stat-sent">0</span><span class="batch-stat-lbl">Successfully Sent</span></div><div class="batch-stat-card is-failed"><span class="batch-stat-num" id="batch-stat-failed">0</span><span class="batch-stat-lbl">Failed / Skipped</span></div><div class="batch-stat-card is-remaining"><span class="batch-stat-num" id="batch-stat-remaining">0</span><span class="batch-stat-lbl">Remaining</span></div></div><div class="batch-log-wrapper"><div class="batch-log-title">Recent Activity</div><div class="batch-log-list" id="batch-log-list"><div class="batch-log-item muted">⚡ Initializing persistent SMTP connection…</div></div></div><div class="batch-modal-footer"><button type="button" class="primary batch-done-btn" id="batch-done-btn" hidden>Done &amp; View Records</button><button type="button" class="quiet batch-cancel-btn" id="batch-cancel-btn">Stop Remaining</button></div></div></dialog><dialog id="send-confirm-dialog" class="send-confirm-dialog" aria-labelledby="send-confirm-title"><div class="confirm-modal-wrap"><div class="confirm-modal-top"><div class="confirm-modal-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></div><div><h3 id="send-confirm-title" class="confirm-title">Confirm Email Dispatch</h3><p id="send-confirm-desc" class="muted confirm-subtitle">Ready to send via Hostinger SMTP.</p></div></div><div id="send-confirm-preview-box" class="confirm-preview-box"><div class="confirm-preview-row"><span class="confirm-lbl">Recipient</span><strong id="send-confirm-recip" class="confirm-val"></strong></div><div class="confirm-preview-row"><span class="confirm-lbl">Subject</span><span id="send-confirm-subj" class="confirm-val"></span></div><div class="confirm-preview-row" id="send-confirm-batch-info" hidden><span class="confirm-lbl">Total to send</span><span id="send-confirm-count" class="confirm-val confirm-pill"></span></div></div><div class="confirm-modal-actions"><button type="button" class="quiet" id="send-confirm-cancel-btn">Cancel</button><button type="button" class="primary confirm-send-action-btn" id="send-confirm-ok-btn"><span>Send via Hostinger SMTP &rarr;</span></button></div></div></dialog></main></body></html>
+</section><section id="integrations" class="view" hidden>
+<div class="dash-header">
+  <div>
+    <div class="eyebrow">COMMUNICATION PLATFORM CONFIGURATION</div>
+    <h1 class="dash-title">Workspace Hub &amp; Integrations</h1>
+    <p class="muted">Manage connected mailboxes, colleague access roles, and platform integrations.</p>
+  </div>
+</div>
+
+<div class="config-tabs-nav" id="integrations-tabs">
+  <button type="button" class="config-tab-btn active" data-tab="tab-mailboxes">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+    <span>Connected Mailboxes</span>
+    <span class="config-tab-badge" id="mailboxes-count-badge">0</span>
+  </button>
+  <button type="button" class="config-tab-btn" data-tab="tab-team" id="tab-btn-team">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span>Team Members &amp; Roles</span>
+    <span class="config-tab-badge" id="team-count-badge">0</span>
+  </button>
+  <button type="button" class="config-tab-btn" data-tab="tab-services">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 12 8-8M7 15l-2 2a3 3 0 0 0 4 4l4-4M11 7l4-4a3 3 0 0 1 4 4l-2 2M8 8l8 8"/></svg>
+    <span>Core Services</span>
+  </button>
+</div>
+
+<!-- Tab 1: Mailboxes -->
+<div class="config-tab-content active" id="tab-mailboxes">
+  <div class="card config-card">
+    <div class="config-card-header">
+      <div>
+        <h2 class="config-card-title">Mail Accounts &amp; "Send As" Addresses</h2>
+        <p class="config-card-sub">Outbound Hostinger SMTP and inbound IMAP synchronization accounts configured for your team.</p>
+      </div>
+      <button type="button" class="primary" id="btn-add-mailbox">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Connect Mailbox</span>
+      </button>
+    </div>
+    <div class="table-wrap">
+      <table class="config-table">
+        <thead>
+          <tr>
+            <th style="width:230px">Account / Sender</th>
+            <th>Outgoing (SMTP)</th>
+            <th>Incoming (IMAP)</th>
+            <th style="width:110px">Status</th>
+            <th style="width:180px;text-align:right;padding-right:16px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="mailboxes-table-body">
+          <tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Loading mailboxes...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Tab 2: Team Members -->
+<div class="config-tab-content" id="tab-team" hidden>
+  <div class="card config-card">
+    <div class="config-card-header">
+      <div>
+        <h2 class="config-card-title">Colleagues &amp; Role-Based Access (RBAC)</h2>
+        <p class="config-card-sub">Members can only send from and read their assigned mailbox. Administrators have full system access.</p>
+      </div>
+      <button type="button" class="primary" id="btn-add-member">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+        <span>Add Colleague</span>
+      </button>
+    </div>
+    <div class="table-wrap">
+      <table class="config-table">
+        <thead>
+          <tr>
+            <th style="width:220px">Colleague</th>
+            <th style="width:120px">Role</th>
+            <th>Assigned Mailbox</th>
+            <th style="width:140px">Created</th>
+            <th style="width:140px;text-align:right;padding-right:16px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-table-body">
+          <tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Loading team...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Tab 3: Core Services -->
+<div class="config-tab-content" id="tab-services" hidden>
+  <div class="integration-grid">
+    <article class="card">
+      <span class="badge sent">Connected &amp; Live</span>
+      <h2>Hostinger SMTP</h2>
+      <p>Live outgoing mail via smtp.hostinger.com:465 with SSL/TLS.</p>
+    </article>
+    <article class="card">
+      <span class="badge sent">Connected &amp; Live</span>
+      <h2>Hostinger IMAP Inbox</h2>
+      <p>Live incoming synchronization via imap.hostinger.com:993.</p>
+      <button class="quiet" data-view="inbox">Open Inbox</button>
+    </article>
+    <article class="card">
+      <span class="badge">Available to connect</span>
+      <h2>Google Sheets</h2>
+      <p>Add sheet links, map columns, and edit records from your workspace.</p>
+      <button class="quiet" data-view="sheets">Manage Google Sheets</button>
+    </article>
+    <article class="card">
+      <span class="badge">Disabled</span>
+      <h2>Automatic replies</h2>
+      <p>Requires rule configuration and human-review workflows before it can be enabled.</p>
+    </article>
+  </div>
+</div>
+</section>
+</div><footer>RSL Communication Desk <span>One workspace. Every conversation.</span></footer><dialog id="email-detail" aria-labelledby="email-detail-tag"><div class="gmail-detail-toolbar"><div class="gmail-toolbar-left"><span class="email-id-tag" id="email-detail-tag">Email</span><span class="email-delivery-pill" id="email-detail-pill">● Delivered</span></div><div class="gmail-toolbar-right"><button type="button" class="gmail-tool-btn" id="close-email-detail" aria-label="Close dialog">Close</button></div></div><div class="gmail-detail-scroll"><p id="email-detail-message" class="muted" role="status" hidden></p><div id="email-detail-content"></div></div></dialog><dialog id="inbox-detail" aria-labelledby="inbox-detail-title"><div class="queue-header"><h2 id="inbox-detail-title">Message details</h2><div class="dialog-actions"><button type="button" class="primary" id="inbox-reply-btn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v2.5"/></svg>Reply</button><button type="button" class="quiet" id="inbox-toggle-read-btn">Mark unread</button><button type="button" class="quiet" id="close-inbox-detail">Close</button></div></div><p id="inbox-detail-message" class="muted" role="status"></p><div id="inbox-detail-content"></div></dialog><dialog id="reset-dialog" aria-labelledby="reset-title"><div class="reset-dialog-wrap"><div class="queue-header"><h2 id="reset-title">Reset Administrator Password</h2><button type="button" id="close-reset" class="reset-close-btn" aria-label="Close dialog">✕</button></div><div id="reset-step-1"><p class="muted reset-subtitle">Enter your administrator email address. We'll send a 6-digit verification code to your inbox.</p><form id="reset-request-form"><label>Administrator email<input id="reset-req-email" name="email" type="email" placeholder="e.g. ray@rslsolution.com" required autocomplete="email"></label><p id="reset-req-error" role="alert" class="email-detail-error" hidden></p><div class="form-footer reset-footer"><button class="primary reset-submit-btn" type="submit" id="reset-req-btn">Send verification code →</button></div></form><div id="reset-local-bypass-wrap" class="reset-bypass-card" hidden><button type="button" class="reset-bypass-btn" id="reset-local-bypass-btn">Running on local computer? Reset directly →</button></div></div><div id="reset-step-2" hidden><p class="muted reset-subtitle" id="reset-sent-notice">A 6-digit code was sent to your email. Enter it below along with your new password.</p><form id="reset-verify-form"><label>6-Digit verification code<input id="reset-verify-code" name="code" type="text" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required autocomplete="one-time-code"></label><label>New password<input id="reset-verify-password" name="password" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="At least 6 characters"></label><label>Confirm new password<input id="reset-verify-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="Re-enter password"></label><p id="reset-verify-error" role="alert" class="email-detail-error" hidden></p><div class="form-footer reset-footer"><button type="button" id="reset-back-to-step1" class="reset-back-btn">← Back</button><button class="primary reset-submit-btn" type="submit" id="reset-verify-btn">Save &amp; Sign in →</button></div></form></div><div id="reset-step-local" hidden><p class="muted reset-subtitle">Local computer access verified. Set a new administrator password directly.</p><form id="reset-local-form"><label>New password<input id="reset-local-password" name="password" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="At least 6 characters"></label><label>Confirm new password<input id="reset-local-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="Re-enter password"></label><p id="reset-local-error" role="alert" class="email-detail-error" hidden></p><div class="form-footer reset-footer"><button type="button" id="reset-local-back" class="reset-back-btn">← Back</button><button class="primary reset-submit-btn" type="submit">Save &amp; Sign in →</button></div></form></div></div></dialog><dialog id="batch-progress-dialog" class="batch-progress-dialog" aria-labelledby="batch-progress-title"><div class="batch-modal-wrap"><div class="batch-modal-header"><div class="batch-modal-status-badge"><span class="status-dot pulsing"></span><span id="batch-progress-badge">Dispatched live via Hostinger SMTP</span></div><h2 id="batch-progress-title">Sending emails…</h2><p id="batch-progress-subtitle" class="muted">Live SMTP dispatch in progress. Please keep this tab open.</p></div><div class="batch-meter-section"><div class="batch-counter-row"><span class="batch-counter-label" id="batch-counter-text">0 / 0 sent</span><span class="batch-counter-percent" id="batch-counter-percent">0%</span></div><div class="batch-progress-track"><div class="batch-progress-fill" id="batch-progress-bar" style="width: 0%"></div></div></div><div class="batch-stats-grid"><div class="batch-stat-card is-success"><span class="batch-stat-num" id="batch-stat-sent">0</span><span class="batch-stat-lbl">Successfully Sent</span></div><div class="batch-stat-card is-failed"><span class="batch-stat-num" id="batch-stat-failed">0</span><span class="batch-stat-lbl">Failed / Skipped</span></div><div class="batch-stat-card is-remaining"><span class="batch-stat-num" id="batch-stat-remaining">0</span><span class="batch-stat-lbl">Remaining</span></div></div><div class="batch-log-wrapper"><div class="batch-log-title">Recent Activity</div><div class="batch-log-list" id="batch-log-list"><div class="batch-log-item muted">⚡ Initializing persistent SMTP connection…</div></div></div><div class="batch-modal-footer"><button type="button" class="primary batch-done-btn" id="batch-done-btn" hidden>Done &amp; View Records</button><button type="button" class="quiet batch-cancel-btn" id="batch-cancel-btn">Stop Remaining</button></div></div></dialog><dialog id="send-confirm-dialog" class="send-confirm-dialog" aria-labelledby="send-confirm-title"><div class="confirm-modal-wrap"><div class="confirm-modal-top"><div class="confirm-modal-icon-wrap"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></div><div><h3 id="send-confirm-title" class="confirm-title">Confirm Email Dispatch</h3><p id="send-confirm-desc" class="muted confirm-subtitle">Ready to send via Hostinger SMTP.</p></div></div><div id="send-confirm-preview-box" class="confirm-preview-box"><div class="confirm-preview-row" id="send-confirm-from-row"><span class="confirm-lbl">Send From</span><span id="send-confirm-from" class="confirm-val confirm-pill">ray@rslsolution.com</span></div><div class="confirm-preview-row"><span class="confirm-lbl">Recipient</span><strong id="send-confirm-recip" class="confirm-val"></strong></div><div class="confirm-preview-row"><span class="confirm-lbl">Subject</span><span id="send-confirm-subj" class="confirm-val"></span></div><div class="confirm-preview-row" id="send-confirm-batch-info" hidden><span class="confirm-lbl">Total to send</span><span id="send-confirm-count" class="confirm-val confirm-pill"></span></div></div><div class="confirm-modal-actions"><button type="button" class="quiet" id="send-confirm-cancel-btn">Cancel</button><button type="button" class="primary confirm-send-action-btn" id="send-confirm-ok-btn"><span>Send via Hostinger SMTP &rarr;</span></button></div></div></dialog>
+
+<!-- Mailbox Modal -->
+<dialog id="mailbox-modal" class="config-modal" aria-labelledby="mailbox-modal-title">
+  <div class="config-modal-wrap">
+    <div class="queue-header">
+      <div>
+        <h2 id="mailbox-modal-title">Connect Mailbox</h2>
+        <p class="muted" id="mailbox-modal-sub">Add a team or personal Hostinger email address for sending and receiving.</p>
+      </div>
+      <button type="button" class="quiet" id="close-mailbox-modal">✕</button>
+    </div>
+    <form id="mailbox-form">
+      <input type="hidden" name="id" id="mailbox-id" value="">
+      
+      <div class="modal-form-grid">
+        <label>
+          <span>Display Name</span>
+          <input name="name" id="mb-name" type="text" required placeholder="e.g. Rahul Waghole">
+        </label>
+        <label>
+          <span>Email Address</span>
+          <input name="email" id="mb-email" type="email" required placeholder="e.g. rahul@rslsolution.com">
+        </label>
+      </div>
+
+      <div class="modal-sub-divider">
+        <span>Outgoing Mail (SMTP)</span>
+      </div>
+
+      <div class="modal-form-grid three-col">
+        <label style="grid-column: span 2">
+          <span>SMTP Host</span>
+          <input name="smtp_host" id="mb-smtp-host" type="text" required value="smtp.hostinger.com">
+        </label>
+        <label>
+          <span>Port</span>
+          <input name="smtp_port" id="mb-smtp-port" type="number" required value="465">
+        </label>
+      </div>
+
+      <div class="modal-form-grid">
+        <label>
+          <span>SMTP Username</span>
+          <input name="smtp_user" id="mb-smtp-user" type="text" required placeholder="e.g. rahul@rslsolution.com">
+        </label>
+        <label>
+          <span>SMTP Password</span>
+          <input name="smtp_pass" id="mb-smtp-pass" type="password" placeholder="Leave blank to keep existing password">
+        </label>
+      </div>
+
+      <div style="margin: 8px 0 14px">
+        <label class="modal-checkbox-row">
+          <input type="checkbox" id="mb-same-creds" checked>
+          <span>Use same host, port &amp; password for incoming IMAP inbox</span>
+        </label>
+      </div>
+
+      <div id="mb-imap-section" hidden>
+        <div class="modal-sub-divider">
+          <span>Incoming Mail (IMAP)</span>
+        </div>
+        <div class="modal-form-grid three-col">
+          <label style="grid-column: span 2">
+            <span>IMAP Host</span>
+            <input name="imap_host" id="mb-imap-host" type="text" value="imap.hostinger.com">
+          </label>
+          <label>
+            <span>Port</span>
+            <input name="imap_port" id="mb-imap-port" type="number" value="993">
+          </label>
+        </div>
+        <div class="modal-form-grid">
+          <label>
+            <span>IMAP Username</span>
+            <input name="imap_user" id="mb-imap-user" type="text" placeholder="e.g. rahul@rslsolution.com">
+          </label>
+          <label>
+            <span>IMAP Password</span>
+            <input name="imap_pass" id="mb-imap-pass" type="password" placeholder="Leave blank to keep existing password">
+          </label>
+        </div>
+      </div>
+
+      <div id="mb-test-result" class="modal-test-banner" hidden></div>
+
+      <div class="form-footer modal-footer-actions">
+        <button type="button" class="quiet" id="btn-test-mailbox">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>Test Connection</span>
+        </button>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button type="button" class="quiet" id="btn-cancel-mailbox">Cancel</button>
+          <button type="submit" class="primary" id="btn-save-mailbox">Save Mailbox</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Colleague / User Modal -->
+<dialog id="user-modal" class="config-modal" aria-labelledby="user-modal-title">
+  <div class="config-modal-wrap">
+    <div class="queue-header">
+      <div>
+        <h2 id="user-modal-title">Add Colleague</h2>
+        <p class="muted">Invite a team member with role-based permissions.</p>
+      </div>
+      <button type="button" class="quiet" id="close-user-modal">✕</button>
+    </div>
+    <form id="user-form">
+      <input type="hidden" name="id" id="user-id" value="">
+      
+      <div class="modal-form-grid">
+        <label>
+          <span>Colleague Name</span>
+          <input name="name" id="u-name" type="text" required placeholder="e.g. Rahul Waghole">
+        </label>
+        <label>
+          <span>Work Login Email</span>
+          <input name="email" id="u-email" type="email" required placeholder="e.g. rahul@rslsolution.com">
+        </label>
+      </div>
+
+      <div class="modal-form-grid">
+        <label>
+          <span>Account Password</span>
+          <input name="password" id="u-password" type="password" minlength="6" placeholder="Enter password (min 6 chars)">
+          <small class="muted" id="u-pass-hint" hidden style="font-size:11px">Leave blank to keep current password</small>
+        </label>
+        <label>
+          <span>Platform Role</span>
+          <select name="role" id="u-role" required>
+            <option value="member" selected>Member (Restricted to assigned mailbox)</option>
+            <option value="admin">Administrator (Full access to all mailboxes &amp; settings)</option>
+          </select>
+        </label>
+      </div>
+
+      <div style="margin-top:10px">
+        <label>
+          <span>Assigned Sending Mailbox</span>
+          <select name="assigned_account_id" id="u-account">
+            <!-- Populated via active mail accounts -->
+          </select>
+          <small class="muted" style="font-size:11px;display:block;margin-top:4px">Members can ONLY send messages from this designated mailbox.</small>
+        </label>
+      </div>
+
+      <div class="form-footer modal-footer-actions" style="margin-top:20px">
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button type="button" class="quiet" id="btn-cancel-user">Cancel</button>
+          <button type="submit" class="primary" id="btn-save-user">Save Colleague</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</dialog></main></body></html>
