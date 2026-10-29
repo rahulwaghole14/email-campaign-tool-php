@@ -406,7 +406,7 @@ try {
             $split = ConversationThread::splitQuotedText((string) $rawSource);
             $cleanText = !empty($split['main']) ? $split['main'] : (string) $rawSource;
             $cleaned = ImapClient::cleanSnippet($cleanText, 85);
-            $c['snippet'] = $cleaned !== '' ? $cleaned : 'Message received';
+            $c['snippet'] = ($cleaned !== '' && $cleaned !== '.') ? $cleaned : 'Message received';
             $c['from_name'] = $c['from_name'] ?: $c['from_email'];
             unset($c['body'], $c['html_body']);
         }

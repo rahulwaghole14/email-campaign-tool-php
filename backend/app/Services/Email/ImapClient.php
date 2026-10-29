@@ -481,6 +481,11 @@ final class ImapClient
         $text = str_replace("\xc2\xa0", ' ', $text);
         // Remove rogue CSS blocks if any still linger
         $text = preg_replace('/\{[^}]*\}/s', ' ', $text);
+        // Strip reply quote headers like "On Wed, Oct 28, 2026... wrote: > ..."
+        $text = preg_replace('/(?:\.|\n|\r|^|\s)\s*On\s+[A-Za-z]+,\s+[A-Za-z0-9,:\s]+wrote:.*$/is', '.', $text);
+        $text = preg_replace('/(?:\.|\n|\r|^|\s)\s*On\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun).*?wrote:.*$/is', '.', $text);
+        $text = preg_replace('/(?:\n|\r|^)\s*>+.*$/m', '', $text);
+        $text = preg_replace('/\s*>\s+.*$/s', '', $text);
         $text = trim(preg_replace('/\s+/', ' ', $text));
         return mb_substr($text, 0, $limit);
     }

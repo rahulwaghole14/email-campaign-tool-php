@@ -808,8 +808,16 @@ function renderHotContacts(contacts) {
     const av = getAvatarStyle(displayName || c.from_email);
     const initial = (displayName || c.from_email || 'C').trim().charAt(0).toUpperCase();
     const timeFormatted = c.received_at ? new Date(c.received_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-    let cleanSnippet = (c.snippet || '').replace(/\{[^}]*\}/g, '').replace(/^[a-z0-9_\-,\s]+;\s*/i, '').trim();
-    if (!cleanSnippet) cleanSnippet = 'Message received';
+    let cleanSnippet = (c.snippet || '')
+      .replace(/<style\b[^>]*>.*?<\/style>/gis, '')
+      .replace(/<script\b[^>]*>.*?<\/script>/gis, '')
+      .replace(/\{[^}]*\}/g, '')
+      .replace(/(?:\.|\n|\r|^|\s)\s*On\s+[A-Za-z]+,\s+[A-Za-z0-9,:\s]+wrote:.*$/is, '.')
+      .replace(/(?:\.|\n|\r|^|\s)\s*On\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun).*?wrote:.*$/is, '.')
+      .replace(/\s*>\s+.*$/s, '')
+      .replace(/^[a-z0-9_\-,\s]+;\s*/i, '')
+      .trim();
+    if (!cleanSnippet || cleanSnippet === '.') cleanSnippet = 'Message received';
 
     item.innerHTML = `
       <div class="dash-contact-left">

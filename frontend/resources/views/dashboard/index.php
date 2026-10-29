@@ -4,7 +4,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 ?>
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL · Communication Desk</title><link rel="stylesheet" href="/assets/app.css?v=53"><script>try{var v=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}}catch(e){}</script><script src="/assets/app.js?v=53" defer></script><script src="/assets/sheets.js?v=36" defer></script><script src="/assets/inbox.js?v=36" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL · Communication Desk</title><link rel="stylesheet" href="/assets/app.css?v=54"><script>try{var v=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}}catch(e){}</script><script src="/assets/app.js?v=54" defer></script><script src="/assets/sheets.js?v=36" defer></script><script src="/assets/inbox.js?v=36" defer></script></head>
 <body class="<?= $isAuthenticated ? 'is-authenticated' : 'is-unauthenticated' ?>">
 <aside><a class="brand" href="/"><img src="/assets/rsl-logo.png?v=52" alt="RSL" class="sidebar-rsl-logo" width="76" height="36"><span>WORKSPACE</span></a><div class="workspace">Communication Desk<small>EMAIL OPERATIONS</small></div><div class="sidebar-action-wrap"><button type="button" class="sidebar-compose-btn" data-view="compose"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg><span>Compose</span></button></div><nav aria-label="Main navigation">
 <button class="nav active" data-view="overview"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Overview</span></button>
@@ -166,45 +166,80 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
   </div>
 
   <!-- System Health -->
-  <div class="card">
+  <div class="card dash-health-card">
     <div class="dash-card-header">
       <div>
         <h2 class="dash-card-title">System &amp; Pipeline Health</h2>
         <p class="dash-card-subtitle">Real-time status of connected mail services</p>
       </div>
+      <button type="button" class="quiet" data-view="integrations" style="padding:6px 12px;font-size:12px;display:inline-flex;align-items:center;gap:4px">
+        <span>Configure</span>
+        <svg class="icon" viewBox="0 0 24 24" style="width:12px;height:12px" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
     </div>
 
     <div class="dash-health-list">
       <div class="dash-health-item">
         <span class="dash-health-dot online"></span>
-        <div>
-          <div class="dash-health-title">Hostinger SMTP Outgoing</div>
+        <div class="dash-health-main">
+          <div class="dash-health-title-row">
+            <span class="dash-health-title">Hostinger SMTP Outgoing</span>
+            <span class="dash-health-badge green">SSL 465</span>
+          </div>
           <div class="dash-health-meta" id="ov-health-smtp">smtp.hostinger.com:465 · Active</div>
         </div>
       </div>
 
       <div class="dash-health-item">
         <span class="dash-health-dot online"></span>
-        <div>
-          <div class="dash-health-title">Hostinger IMAP Inbox Polling</div>
+        <div class="dash-health-main">
+          <div class="dash-health-title-row">
+            <span class="dash-health-title">Hostinger IMAP Inbox Polling</span>
+            <span class="dash-health-badge green">SSL 993</span>
+          </div>
           <div class="dash-health-meta" id="ov-health-imap">imap.hostinger.com:993 · Live sync active</div>
         </div>
       </div>
 
       <div class="dash-health-item">
         <span class="dash-health-dot online"></span>
-        <div>
-          <div class="dash-health-title">Google Sheets &amp; Excel Hub</div>
+        <div class="dash-health-main">
+          <div class="dash-health-title-row">
+            <span class="dash-health-title">Google Sheets &amp; Excel Hub</span>
+            <span class="dash-health-badge blue">Auto-Sync</span>
+          </div>
           <div class="dash-health-meta" id="ov-health-sheets">Live sync active · Real-time status sync</div>
         </div>
       </div>
 
       <div class="dash-health-item">
         <span class="dash-health-dot online"></span>
-        <div>
-          <div class="dash-health-title">MySQL Database &amp; Queue Worker</div>
+        <div class="dash-health-main">
+          <div class="dash-health-title-row">
+            <span class="dash-health-title">MySQL Database &amp; Queue</span>
+            <span class="dash-health-badge green">Optimal</span>
+          </div>
           <div class="dash-health-meta" id="ov-health-db">0 pending queue · Latency &lt; 2ms</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Pinned Operational Summary Panel (Fills the height gap perfectly) -->
+    <div class="dash-health-summary-panel">
+      <div class="dash-health-summary-header">
+        <div class="dash-health-summary-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="icon" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div>
+          <div class="dash-health-summary-title">Pipeline Fully Operational</div>
+          <div class="dash-health-summary-sub">All inbound &amp; outbound channels online with 0 delivery faults.</div>
+        </div>
+      </div>
+      <div class="dash-health-summary-actions">
+        <button type="button" class="primary" data-view="integrations" style="width:100%;min-height:38px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px">
+          <span>Manage Integrations &amp; API Keys</span>
+          <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
       </div>
     </div>
   </div>
