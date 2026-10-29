@@ -144,8 +144,10 @@ final class ImapClient
         $mime = self::extractMime($bodyPart, $headers['content-type'] ?? '', $headers['content-transfer-encoding'] ?? '');
         $body = $mime['plain'];
         $htmlBody = $mime['html'];
-        $snippet = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($body))), 0, 140);
-        if ($snippet === '') $snippet = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($htmlBody))), 0, 140);
+        $snippet = self::cleanSnippet($body, 140);
+        if ($snippet === '' && !empty($htmlBody)) {
+            $snippet = self::cleanSnippet($htmlBody, 140);
+        }
 
         return [
             'uid' => $uid,
@@ -230,14 +232,16 @@ final class ImapClient
         $stmt->execute($params);
         $emails = $stmt->fetchAll();
 
-        // Ensure snippets don't show raw MIME headers or boundary markers
+        // Ensure snippets don't show raw MIME headers, boundary markers, or CSS rules
         foreach ($emails as &$em) {
-            if (str_contains((string) $em['snippet'], '--') || str_contains((string) $em['snippet'], 'Content-Type:')) {
+            $snip = (string) $em['snippet'];
+            if (str_contains($snip, '--') || str_contains($snip, 'Content-Type:') || str_contains($snip, '{') || str_contains($snip, '-webkit-') || str_contains($snip, 'font-smoothing')) {
                 $cleaned = self::cleanMimeBody($em['body']);
-                $em['snippet'] = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($cleaned))), 0, 140);
-                if ($em['snippet'] === '' || str_contains($em['snippet'], 'Content-Type:')) {
-                    $em['snippet'] = 'Message content received.';
+                $cleanSnippet = self::cleanSnippet($cleaned, 140);
+                if ($cleanSnippet === '' && !empty($em['html_body'])) {
+                    $cleanSnippet = self::cleanSnippet($em['html_body'], 140);
                 }
+                $em['snippet'] = $cleanSnippet !== '' ? $cleanSnippet : 'Message content received.';
                 try {
                     $this->db->prepare("UPDATE inbox_emails SET body = ?, snippet = ? WHERE id = ?")->execute([$cleaned, $em['snippet'], $em['id']]);
                 } catch (\Throwable $t) {}
@@ -296,7 +300,7 @@ final class ImapClient
             $updated = false;
             if (!empty($mime['plain']) && $mime['plain'] !== $email['body']) {
                 $email['body'] = $mime['plain'];
-                $email['snippet'] = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($mime['plain']))), 0, 140);
+                $email['snippet'] = self::cleanSnippet($mime['plain'], 140);
                 $updated = true;
             }
             if (!empty($mime['html']) && empty($email['html_body'])) {
@@ -459,6 +463,26 @@ final class ImapClient
     public static function cleanMimeBody(string $raw, string $contentType = '', string $topEncoding = ''): string
     {
         return self::extractMime($raw, $contentType, $topEncoding)['plain'];
+    }
+
+    public static function cleanSnippet(string $text, int $limit = 140): string
+    {
+        // Strip style, script and head tags and their entire contents
+        $text = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $text);
+        $text = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $text);
+        $text = preg_replace('/<head\b[^>]*>.*?<\/head>/is', ' ', $text);
+        // Strip XML/HTML comments
+        $text = preg_replace('/<!--.*?-->/s', ' ', $text);
+        // Strip remaining tags
+        $text = strip_tags($text);
+        // Decode HTML entities
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Replace non-breaking spaces and collapse whitespace
+        $text = str_replace("\xc2\xa0", ' ', $text);
+        // Remove rogue CSS blocks if any still linger
+        $text = preg_replace('/\{[^}]*\}/s', ' ', $text);
+        $text = trim(preg_replace('/\s+/', ' ', $text));
+        return mb_substr($text, 0, $limit);
     }
 
     public static function extractMime(string $raw, string $contentType = '', string $topEncoding = ''): array

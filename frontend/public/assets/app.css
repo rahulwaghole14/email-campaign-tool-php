@@ -2681,6 +2681,14 @@ header #logout:hover {
   border-radius: 12px !important;
   display: flex !important;
   flex-direction: column !important;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s ease !important;
+  cursor: pointer !important;
+}
+
+.dash-kpi-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(20, 46, 37, 0.08) !important;
+  border-color: #b7cebf !important;
 }
 
 .dash-kpi-header {
@@ -2890,6 +2898,12 @@ header #logout:hover {
   flex-shrink: 0 !important;
 }
 
+.dash-contact-info {
+  min-width: 0 !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+}
+
 .dash-contact-name {
   font-size: 13.5px !important;
   font-weight: 600 !important;
@@ -2897,12 +2911,20 @@ header #logout:hover {
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 6px !important;
 }
 
 .dash-contact-email {
-  font-size: 12px !important;
+  font-size: 11.5px !important;
   font-weight: 400 !important;
   color: #66786c !important;
+  display: inline-block !important;
+  max-width: 220px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }
 
 .dash-contact-snippet {

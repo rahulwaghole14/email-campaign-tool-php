@@ -4,7 +4,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 ?>
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL · Communication Desk</title><link rel="stylesheet" href="/assets/app.css?v=52"><script>try{var v=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}}catch(e){}</script><script src="/assets/app.js?v=52" defer></script><script src="/assets/sheets.js?v=36" defer></script><script src="/assets/inbox.js?v=36" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL · Communication Desk</title><link rel="stylesheet" href="/assets/app.css?v=53"><script>try{var v=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}}catch(e){}</script><script src="/assets/app.js?v=53" defer></script><script src="/assets/sheets.js?v=36" defer></script><script src="/assets/inbox.js?v=36" defer></script></head>
 <body class="<?= $isAuthenticated ? 'is-authenticated' : 'is-unauthenticated' ?>">
 <aside><a class="brand" href="/"><img src="/assets/rsl-logo.png?v=52" alt="RSL" class="sidebar-rsl-logo" width="76" height="36"><span>WORKSPACE</span></a><div class="workspace">Communication Desk<small>EMAIL OPERATIONS</small></div><div class="sidebar-action-wrap"><button type="button" class="sidebar-compose-btn" data-view="compose"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg><span>Compose</span></button></div><nav aria-label="Main navigation">
 <button class="nav active" data-view="overview"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Overview</span></button>
@@ -25,13 +25,13 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
     <p class="muted">Real-time metrics, engagement volume, and deliverability status</p>
   </div>
   <div class="header-actions">
+    <span class="overview-sync-status" id="overview-sync-status" style="font-size:12px;color:#66786c;display:inline-flex;align-items:center;gap:6px">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#34a853"></span>
+      <span>Auto-synced</span>
+    </span>
     <button type="button" class="quiet" id="overview-sync-btn">
       <svg class="icon sync-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M19 12a7 7 0 0 0-12-5L4 10M5 12a7 7 0 0 0 12 5l3-3"/></svg>
       <span>Sync Inbox</span>
-    </button>
-    <button class="primary" data-view="compose">
-      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      <span>Compose email</span>
     </button>
   </div>
 </div>
@@ -43,7 +43,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 
 <!-- 4 Visual KPI Cards -->
 <div class="dash-kpi-grid">
-  <div class="card dash-kpi-card">
+  <div class="card dash-kpi-card" data-view="sent" title="Click to view all sent messages" tabindex="0">
     <div class="dash-kpi-header">
       <span>DELIVERED OUTGOING</span>
       <svg class="icon text-muted" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
@@ -55,7 +55,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
     </span>
   </div>
 
-  <div class="card dash-kpi-card">
+  <div class="card dash-kpi-card" data-view="inbox" title="Click to open inbox" tabindex="0">
     <div class="dash-kpi-header">
       <span>INBOUND REPLIES</span>
       <svg class="icon text-muted" viewBox="0 0 24 24"><path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z"/><path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10"/></svg>
@@ -66,25 +66,25 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
     </span>
   </div>
 
-  <div class="card dash-kpi-card">
+  <div class="card dash-kpi-card" data-view="inbox" title="Click to view conversation replies" tabindex="0">
     <div class="dash-kpi-header">
       <span>RESPONSE RATE</span>
       <svg class="icon text-muted" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
     </div>
     <div class="dash-kpi-val" id="ov-stat-response-rate">0%</div>
     <span class="dash-badge green">
-      <span>Active Engagement Rate</span>
+      <span id="ov-stat-response-label">Campaign Reply Engagement</span>
     </span>
   </div>
 
-  <div class="card dash-kpi-card">
+  <div class="card dash-kpi-card" data-view="integrations" title="Click to view mail server &amp; delivery health" tabindex="0">
     <div class="dash-kpi-header">
       <span>DELIVERY HEALTH</span>
       <svg class="icon text-muted" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>
-    <div class="dash-kpi-val" id="ov-stat-health">0 Bounces</div>
+    <div class="dash-kpi-val" id="ov-stat-health">100%</div>
     <span class="dash-badge green">
-      <span id="ov-stat-health-badge">0 Delivery Failures</span>
+      <span id="ov-stat-health-badge">Zero Bounces · Optimal Health</span>
     </span>
   </div>
 </div>
@@ -115,7 +115,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
         <span id="ov-legend-received">Inbound Replies</span>
       </div>
       <div class="dash-legend-item" style="margin-left:auto">
-        <span>Peak communication window: <strong>3:00 PM – 5:00 PM</strong></span>
+        <span>Peak communication window: <strong id="ov-peak-window">3:00 PM – 5:00 PM</strong></span>
       </div>
     </div>
   </div>

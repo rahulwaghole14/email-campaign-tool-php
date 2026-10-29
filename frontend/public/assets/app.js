@@ -802,16 +802,21 @@ function renderHotContacts(contacts) {
   for (const c of contacts) {
     const item = document.createElement('div');
     item.className = 'dash-contact-item';
-    const av = getAvatarStyle(c.from_name || c.from_email);
-    const initial = (c.from_name || c.from_email).trim().charAt(0).toUpperCase();
+    const isNameSameAsEmail = !c.from_name || c.from_name.trim().toLowerCase() === (c.from_email || '').trim().toLowerCase();
+    const displayName = isNameSameAsEmail ? (c.from_email || 'Contact').split('@')[0] : c.from_name;
+    const emailTag = `<span class="dash-contact-email" title="${escapeHtml(c.from_email)}">&lt;${escapeHtml(c.from_email)}&gt;</span>`;
+    const av = getAvatarStyle(displayName || c.from_email);
+    const initial = (displayName || c.from_email || 'C').trim().charAt(0).toUpperCase();
     const timeFormatted = c.received_at ? new Date(c.received_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    let cleanSnippet = (c.snippet || '').replace(/\{[^}]*\}/g, '').replace(/^[a-z0-9_\-,\s]+;\s*/i, '').trim();
+    if (!cleanSnippet) cleanSnippet = 'Message received';
 
     item.innerHTML = `
       <div class="dash-contact-left">
         <div class="dash-contact-avatar" style="background:${av.bg};color:${av.text}">${initial}</div>
         <div class="dash-contact-info">
-          <div class="dash-contact-name">${escapeHtml(c.from_name)} <span class="dash-contact-email">&lt;${escapeHtml(c.from_email)}&gt;</span></div>
-          <div class="dash-contact-snippet">${escapeHtml(c.snippet || 'Message received')}</div>
+          <div class="dash-contact-name">${escapeHtml(displayName)} ${emailTag}</div>
+          <div class="dash-contact-snippet" title="${escapeHtml(cleanSnippet)}">${escapeHtml(cleanSnippet)}</div>
         </div>
       </div>
       <div class="dash-contact-right">
@@ -841,9 +846,35 @@ async function load() {
     if ($('#ov-stat-inbound')) $('#ov-stat-inbound').textContent = data.counts.inbox_total ?? 0;
     if ($('#ov-stat-inbox-badge')) $('#ov-stat-inbox-badge').textContent = `● ${data.counts.inbox_unread ?? 0} Unread`;
     if ($('#ov-stat-response-rate')) $('#ov-stat-response-rate').textContent = `${data.counts.response_rate ?? 0}%`;
+    if ($('#ov-stat-response-label')) {
+      $('#ov-stat-response-label').textContent = (data.counts.response_rate ?? 0) > 0 ? 'Verified Campaign Replies' : 'Awaiting Prospect Replies';
+    }
     if ($('#ov-stat-delivery-label')) $('#ov-stat-delivery-label').textContent = `${data.counts.delivery_rate ?? 100}% Accepted by Hostinger`;
-    if ($('#ov-stat-health')) $('#ov-stat-health').textContent = `${data.counts.failed ?? 0} Bounces`;
-    if ($('#ov-stat-health-badge')) $('#ov-stat-health-badge').textContent = `${data.counts.failed ?? 0} Delivery Failures`;
+
+    const failed = data.counts.failed ?? 0;
+    const deliveryRate = data.counts.delivery_rate ?? 100;
+    if ($('#ov-stat-health')) {
+      $('#ov-stat-health').textContent = failed === 0 ? '100%' : `${deliveryRate}%`;
+    }
+    if ($('#ov-stat-health-badge')) {
+      $('#ov-stat-health-badge').textContent = failed === 0 ? 'Zero Bounces · Optimal Health' : `${failed} Delivery Failures`;
+      const badgeWrap = $('#ov-stat-health-badge').closest('.dash-badge');
+      if (badgeWrap) {
+        badgeWrap.className = failed === 0 ? 'dash-badge green' : 'dash-badge red';
+      }
+    }
+
+    // Dynamic Sync Status & Peak Window
+    if ($('#overview-sync-status')) {
+      const now = new Date();
+      $('#overview-sync-status').innerHTML = `
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#34a853"></span>
+        <span>Synced ${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+      `;
+    }
+    if ($('#ov-peak-window') && data.peak_window) {
+      $('#ov-peak-window').textContent = data.peak_window;
+    }
 
     // Legends
     if ($('#ov-legend-sent')) $('#ov-legend-sent').textContent = `Outgoing Sent (${data.counts.sent ?? 0} msgs)`;

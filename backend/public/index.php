@@ -313,9 +313,14 @@ try {
         $totalFailed = $counts['failed'];
         $deliveryRate = ($totalSent + $totalFailed) > 0 ? round(($totalSent / ($totalSent + $totalFailed)) * 100, 1) : 100.0;
         
-        $repliedContacts = (int) ($db->query("SELECT COUNT(DISTINCT LOWER(from_email)) FROM inbox_emails")->fetchColumn() ?: 0);
-        $totalRecipients = (int) ($db->query("SELECT COUNT(DISTINCT LOWER(recipient)) FROM emails WHERE status = 'sent'")->fetchColumn() ?: 0);
-        $responseRate = $totalRecipients > 0 ? min(100.0, round(($repliedContacts / $totalRecipients) * 100, 1)) : 0.0;
+        $matchedReplies = (int) ($db->query("
+            SELECT COUNT(DISTINCT LOWER(TRIM(e.recipient)))
+            FROM emails e
+            INNER JOIN inbox_emails i ON LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))
+            WHERE e.status = 'sent'
+        ")->fetchColumn() ?: 0);
+        $totalRecipients = (int) ($db->query("SELECT COUNT(DISTINCT LOWER(TRIM(recipient))) FROM emails WHERE status = 'sent'")->fetchColumn() ?: 0);
+        $responseRate = $totalRecipients > 0 ? min(100.0, round(($matchedReplies / $totalRecipients) * 100, 1)) : 0.0;
 
         // 7-day trend
         $days = [];
@@ -337,25 +342,73 @@ try {
             if (isset($days[$r['d']])) $days[$r['d']]['received'] = (int) $r['c'];
         }
 
-        // Top Engaged / Hot Contacts
+        // Dynamic peak communication window
+        $peakHourRow = $db->query("
+            SELECT HOUR(COALESCE(received_at, created_at)) as h, COUNT(*) as c
+            FROM inbox_emails
+            WHERE COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            GROUP BY h
+            ORDER BY c DESC
+            LIMIT 1
+        ")->fetch(PDO::FETCH_ASSOC);
+
+        $peakWindow = '3:00 PM – 5:00 PM';
+        if ($peakHourRow && isset($peakHourRow['h']) && (int) $peakHourRow['c'] > 0) {
+            $h = (int) $peakHourRow['h'];
+            $startPeriod = $h >= 12 ? 'PM' : 'AM';
+            $h12 = $h % 12 ?: 12;
+            $hEnd = ($h + 2) % 24;
+            $endPeriod = $hEnd >= 12 ? 'PM' : 'AM';
+            $hEnd12 = $hEnd % 12 ?: 12;
+            $peakWindow = sprintf('%d:00 %s – %d:00 %s', $h12, $startPeriod, $hEnd12, $endPeriod);
+        }
+
+        // Top Engaged Contacts (Prioritize genuine leads over automated newsletters/jobalerts)
         $hotContacts = $db->query("
-            SELECT i.id, i.from_name, i.from_email, i.snippet, i.received_at,
-                   (SELECT COUNT(*) FROM emails e WHERE LOWER(e.recipient) = LOWER(i.from_email)) +
-                   (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(i2.from_email) = LOWER(i.from_email)) AS thread_count
+            SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
+                   (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))) +
+                   (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email))) AS thread_count
             FROM inbox_emails i
             INNER JOIN (
-                SELECT MAX(id) as max_id FROM inbox_emails GROUP BY LOWER(from_email)
+                SELECT MAX(id) as max_id FROM inbox_emails GROUP BY LOWER(TRIM(from_email))
             ) latest ON i.id = latest.max_id
+            WHERE i.from_email NOT LIKE '%noreply%'
+              AND i.from_email NOT LIKE '%no-reply%'
+              AND i.from_email NOT LIKE '%jobalerts%'
+              AND i.from_email NOT LIKE '%donotreply%'
+              AND i.from_email NOT LIKE '%notification%'
+              AND i.from_email NOT LIKE '%mailer-daemon%'
             ORDER BY i.id DESC
             LIMIT 5
         ")->fetchAll(PDO::FETCH_ASSOC);
 
-        // Clean snippets using ConversationThread quote separation
+        // If fewer than 5 contacts, backfill with most recent activity so list isn't empty
+        if (count($hotContacts) < 5) {
+            $excludeIds = !empty($hotContacts) ? implode(',', array_map('intval', array_column($hotContacts, 'id'))) : '0';
+            $backfill = $db->query("
+                SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
+                       (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))) +
+                       (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email))) AS thread_count
+                FROM inbox_emails i
+                INNER JOIN (
+                    SELECT MAX(id) as max_id FROM inbox_emails GROUP BY LOWER(TRIM(from_email))
+                ) latest ON i.id = latest.max_id
+                WHERE i.id NOT IN ($excludeIds)
+                ORDER BY i.id DESC
+                LIMIT " . (5 - count($hotContacts))
+            )->fetchAll(PDO::FETCH_ASSOC);
+            $hotContacts = array_merge($hotContacts, $backfill);
+        }
+
+        // Clean snippets using ConversationThread quote separation & cleanSnippet
         foreach ($hotContacts as &$c) {
-            $split = ConversationThread::splitQuotedText((string) ($c['snippet'] ?? ''));
-            $cleanText = !empty($split['main']) ? $split['main'] : (string) ($c['snippet'] ?? '');
-            $c['snippet'] = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($cleanText))), 0, 85);
+            $rawSource = !empty($c['snippet']) ? $c['snippet'] : (!empty($c['body']) ? $c['body'] : ($c['html_body'] ?? ''));
+            $split = ConversationThread::splitQuotedText((string) $rawSource);
+            $cleanText = !empty($split['main']) ? $split['main'] : (string) $rawSource;
+            $cleaned = ImapClient::cleanSnippet($cleanText, 85);
+            $c['snippet'] = $cleaned !== '' ? $cleaned : 'Message received';
             $c['from_name'] = $c['from_name'] ?: $c['from_email'];
+            unset($c['body'], $c['html_body']);
         }
         unset($c);
 
@@ -370,6 +423,7 @@ try {
             ]),
             'inbox_unread' => $inboxUnread,
             'traffic_7d' => array_values($days),
+            'peak_window' => $peakWindow,
             'hot_contacts' => $hotContacts,
             'system_health' => [
                 'smtp_host' => 'smtp.hostinger.com:465',
