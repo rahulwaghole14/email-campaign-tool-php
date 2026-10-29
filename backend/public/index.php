@@ -361,8 +361,9 @@ try {
 
     if ($path === '/api/inbox' && $method === 'GET') {
         $queryParams = $_GET;
-        if ($currentUser['role'] === 'member' && !empty($currentUser['assigned_account_id'])) {
-            $queryParams['account_id'] = $currentUser['assigned_account_id'];
+        if ($currentUser['role'] === 'member') {
+            $queryParams['account_id'] = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : -1;
+            $queryParams['to_email'] = $currentUser['email'];
         }
         respond($imap->listing($queryParams));
     }
@@ -386,6 +387,15 @@ try {
     if (preg_match('#^/api/inbox/(\d+)$#', $path, $match) && $method === 'GET') {
         $detail = $imap->detail((int) $match[1]);
         if (!$detail) respond(['error' => 'Email not found.'], 404);
+        if ($currentUser['role'] === 'member') {
+            $memberAcctId = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : -1;
+            $memberEmail = strtolower(trim((string) $currentUser['email']));
+            $emailAcctId = (int) ($detail['mail_account_id'] ?? 0);
+            $emailTo = strtolower(trim((string) ($detail['to_email'] ?? '')));
+            if ($emailAcctId !== $memberAcctId && $emailTo !== $memberEmail) {
+                respond(['error' => 'Access denied.'], 403);
+            }
+        }
         respond($detail);
     }
     if (preg_match('#^/api/inbox/(\d+)/toggle-read$#', $path, $match) && $method === 'POST') {
@@ -427,10 +437,23 @@ try {
             'message' => "Mail server active on @{$domain}"
         ], 200);
     }
-    if ($path === '/api/emails' && $method === 'GET') respond($history->listing($_GET));
+    if ($path === '/api/emails' && $method === 'GET') {
+        $queryParams = $_GET;
+        if ($currentUser['role'] === 'member') {
+            $queryParams['mail_account_id'] = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : -1;
+        }
+        respond($history->listing($queryParams));
+    }
     if (preg_match('#^/api/emails/(\d+)$#', $path, $match) && $method === 'GET') {
         $detail = $history->detail((int) $match[1]);
         if (!$detail) respond(['error'=>'Email not found.'], 404);
+        if ($currentUser['role'] === 'member') {
+            $memberAcctId = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : -1;
+            $emailAcctId = (int) ($detail['mail_account_id'] ?? 0);
+            if ($emailAcctId !== $memberAcctId) {
+                respond(['error' => 'Access denied.'], 403);
+            }
+        }
         respond($detail);
     }
     if (str_starts_with($path, '/api/google/') || str_starts_with($path, '/api/sheets')) {
@@ -438,21 +461,69 @@ try {
     }
     if ($path === '/api/dashboard' && $method === 'GET') {
         $counts = ['pending' => 0, 'sent' => 0, 'failed' => 0, 'dry_run' => 0, 'processing' => 0];
-        foreach ($db->query('SELECT status, COUNT(*) AS total FROM emails GROUP BY status') as $row) $counts[$row['status']] = (int) $row['total'];
-        $inboxTotal = (int) ($db->query('SELECT COUNT(*) FROM inbox_emails')->fetchColumn() ?: 0);
-        $inboxUnread = (int) ($db->query('SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0')->fetchColumn() ?: 0);
+        $isMember = ($currentUser['role'] === 'member');
+        $memberAcctId = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : null;
+        $memberEmail = strtolower(trim((string) $currentUser['email']));
+
+        if ($isMember) {
+            if ($memberAcctId !== null) {
+                $stmt = $db->prepare('SELECT status, COUNT(*) AS total FROM emails WHERE mail_account_id = ? GROUP BY status');
+                $stmt->execute([$memberAcctId]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) $counts[$row['status']] = (int) $row['total'];
+
+                $stmt = $db->prepare('SELECT COUNT(*) FROM inbox_emails WHERE mail_account_id = ? OR LOWER(to_email) = ?');
+                $stmt->execute([$memberAcctId, $memberEmail]);
+                $inboxTotal = (int) ($stmt->fetchColumn() ?: 0);
+
+                $stmt = $db->prepare('SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0 AND (mail_account_id = ? OR LOWER(to_email) = ?)');
+                $stmt->execute([$memberAcctId, $memberEmail]);
+                $inboxUnread = (int) ($stmt->fetchColumn() ?: 0);
+            } else {
+                $stmt = $db->prepare('SELECT COUNT(*) FROM inbox_emails WHERE LOWER(to_email) = ?');
+                $stmt->execute([$memberEmail]);
+                $inboxTotal = (int) ($stmt->fetchColumn() ?: 0);
+
+                $stmt = $db->prepare('SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0 AND LOWER(to_email) = ?');
+                $stmt->execute([$memberEmail]);
+                $inboxUnread = (int) ($stmt->fetchColumn() ?: 0);
+            }
+        } else {
+            foreach ($db->query('SELECT status, COUNT(*) AS total FROM emails GROUP BY status') as $row) $counts[$row['status']] = (int) $row['total'];
+            $inboxTotal = (int) ($db->query('SELECT COUNT(*) FROM inbox_emails')->fetchColumn() ?: 0);
+            $inboxUnread = (int) ($db->query('SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0')->fetchColumn() ?: 0);
+        }
         
         $totalSent = $counts['sent'];
         $totalFailed = $counts['failed'];
         $deliveryRate = ($totalSent + $totalFailed) > 0 ? round(($totalSent / ($totalSent + $totalFailed)) * 100, 1) : 100.0;
         
-        $matchedReplies = (int) ($db->query("
-            SELECT COUNT(DISTINCT LOWER(TRIM(e.recipient)))
-            FROM emails e
-            INNER JOIN inbox_emails i ON LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))
-            WHERE e.status = 'sent'
-        ")->fetchColumn() ?: 0);
-        $totalRecipients = (int) ($db->query("SELECT COUNT(DISTINCT LOWER(TRIM(recipient))) FROM emails WHERE status = 'sent'")->fetchColumn() ?: 0);
+        if ($isMember) {
+            if ($memberAcctId !== null) {
+                $stmt = $db->prepare("
+                    SELECT COUNT(DISTINCT LOWER(TRIM(e.recipient)))
+                    FROM emails e
+                    INNER JOIN inbox_emails i ON LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))
+                    WHERE e.status = 'sent' AND e.mail_account_id = ? AND (i.mail_account_id = ? OR LOWER(i.to_email) = ?)
+                ");
+                $stmt->execute([$memberAcctId, $memberAcctId, $memberEmail]);
+                $matchedReplies = (int) ($stmt->fetchColumn() ?: 0);
+
+                $stmt = $db->prepare("SELECT COUNT(DISTINCT LOWER(TRIM(recipient))) FROM emails WHERE status = 'sent' AND mail_account_id = ?");
+                $stmt->execute([$memberAcctId]);
+                $totalRecipients = (int) ($stmt->fetchColumn() ?: 0);
+            } else {
+                $matchedReplies = 0;
+                $totalRecipients = 0;
+            }
+        } else {
+            $matchedReplies = (int) ($db->query("
+                SELECT COUNT(DISTINCT LOWER(TRIM(e.recipient)))
+                FROM emails e
+                INNER JOIN inbox_emails i ON LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))
+                WHERE e.status = 'sent'
+            ")->fetchColumn() ?: 0);
+            $totalRecipients = (int) ($db->query("SELECT COUNT(DISTINCT LOWER(TRIM(recipient))) FROM emails WHERE status = 'sent'")->fetchColumn() ?: 0);
+        }
         $responseRate = $totalRecipients > 0 ? min(100.0, round(($matchedReplies / $totalRecipients) * 100, 1)) : 0.0;
 
         // 7-day trend
@@ -466,24 +537,59 @@ try {
                 'received' => 0
             ];
         }
-        $sentRows = $db->query("SELECT DATE(created_at) as d, COUNT(*) as c FROM emails WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d")->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($isMember) {
+            if ($memberAcctId !== null) {
+                $stmt = $db->prepare("SELECT DATE(created_at) as d, COUNT(*) as c FROM emails WHERE mail_account_id = ? AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d");
+                $stmt->execute([$memberAcctId]);
+                $sentRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                $stmt = $db->prepare("SELECT DATE(COALESCE(received_at, created_at)) as d, COUNT(*) as c FROM inbox_emails WHERE (mail_account_id = ? OR LOWER(to_email) = ?) AND COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d");
+                $stmt->execute([$memberAcctId, $memberEmail]);
+                $inboxRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $sentRows = [];
+                $stmt = $db->prepare("SELECT DATE(COALESCE(received_at, created_at)) as d, COUNT(*) as c FROM inbox_emails WHERE LOWER(to_email) = ? AND COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d");
+                $stmt->execute([$memberEmail]);
+                $inboxRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } else {
+            $sentRows = $db->query("SELECT DATE(created_at) as d, COUNT(*) as c FROM emails WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d")->fetchAll(PDO::FETCH_ASSOC);
+            $inboxRows = $db->query("SELECT DATE(COALESCE(received_at, created_at)) as d, COUNT(*) as c FROM inbox_emails WHERE COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d")->fetchAll(PDO::FETCH_ASSOC);
+        }
         foreach ($sentRows as $r) {
             if (isset($days[$r['d']])) $days[$r['d']]['sent'] = (int) $r['c'];
         }
-        $inboxRows = $db->query("SELECT DATE(COALESCE(received_at, created_at)) as d, COUNT(*) as c FROM inbox_emails WHERE COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($inboxRows as $r) {
             if (isset($days[$r['d']])) $days[$r['d']]['received'] = (int) $r['c'];
         }
 
         // Dynamic peak communication window
-        $peakHourRow = $db->query("
-            SELECT HOUR(COALESCE(received_at, created_at)) as h, COUNT(*) as c
-            FROM inbox_emails
-            WHERE COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-            GROUP BY h
-            ORDER BY c DESC
-            LIMIT 1
-        ")->fetch(PDO::FETCH_ASSOC);
+        if ($isMember) {
+            if ($memberAcctId !== null) {
+                $stmt = $db->prepare("
+                    SELECT HOUR(COALESCE(received_at, created_at)) as h, COUNT(*) as c
+                    FROM inbox_emails
+                    WHERE (mail_account_id = ? OR LOWER(to_email) = ?) AND COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                    GROUP BY h
+                    ORDER BY c DESC
+                    LIMIT 1
+                ");
+                $stmt->execute([$memberAcctId, $memberEmail]);
+                $peakHourRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            } else {
+                $peakHourRow = false;
+            }
+        } else {
+            $peakHourRow = $db->query("
+                SELECT HOUR(COALESCE(received_at, created_at)) as h, COUNT(*) as c
+                FROM inbox_emails
+                WHERE COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                GROUP BY h
+                ORDER BY c DESC
+                LIMIT 1
+            ")->fetch(PDO::FETCH_ASSOC);
+        }
 
         $peakWindow = '3:00 PM – 5:00 PM';
         if ($peakHourRow && isset($peakHourRow['h']) && (int) $peakHourRow['c'] > 0) {
@@ -497,28 +603,33 @@ try {
         }
 
         // Top Engaged Contacts (Prioritize genuine leads over automated newsletters/jobalerts)
-        $hotContacts = $db->query("
-            SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
-                   (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))) +
-                   (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email))) AS thread_count
-            FROM inbox_emails i
-            INNER JOIN (
-                SELECT MAX(id) as max_id FROM inbox_emails GROUP BY LOWER(TRIM(from_email))
-            ) latest ON i.id = latest.max_id
-            WHERE i.from_email NOT LIKE '%noreply%'
-              AND i.from_email NOT LIKE '%no-reply%'
-              AND i.from_email NOT LIKE '%jobalerts%'
-              AND i.from_email NOT LIKE '%donotreply%'
-              AND i.from_email NOT LIKE '%notification%'
-              AND i.from_email NOT LIKE '%mailer-daemon%'
-            ORDER BY i.id DESC
-            LIMIT 5
-        ")->fetchAll(PDO::FETCH_ASSOC);
-
-        // If fewer than 5 contacts, backfill with most recent activity so list isn't empty
-        if (count($hotContacts) < 5) {
-            $excludeIds = !empty($hotContacts) ? implode(',', array_map('intval', array_column($hotContacts, 'id'))) : '0';
-            $backfill = $db->query("
+        if ($isMember) {
+            if ($memberAcctId !== null) {
+                $stmt = $db->prepare("
+                    SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
+                           (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email)) AND e.mail_account_id = ?) +
+                           (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email)) AND (i2.mail_account_id = ? OR LOWER(i2.to_email) = ?)) AS thread_count
+                    FROM inbox_emails i
+                    INNER JOIN (
+                        SELECT MAX(id) as max_id FROM inbox_emails WHERE (mail_account_id = ? OR LOWER(to_email) = ?) GROUP BY LOWER(TRIM(from_email))
+                    ) latest ON i.id = latest.max_id
+                    WHERE (i.mail_account_id = ? OR LOWER(i.to_email) = ?)
+                      AND i.from_email NOT LIKE '%noreply%'
+                      AND i.from_email NOT LIKE '%no-reply%'
+                      AND i.from_email NOT LIKE '%jobalerts%'
+                      AND i.from_email NOT LIKE '%donotreply%'
+                      AND i.from_email NOT LIKE '%notification%'
+                      AND i.from_email NOT LIKE '%mailer-daemon%'
+                    ORDER BY i.id DESC
+                    LIMIT 5
+                ");
+                $stmt->execute([$memberAcctId, $memberAcctId, $memberEmail, $memberAcctId, $memberEmail, $memberAcctId, $memberEmail]);
+                $hotContacts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $hotContacts = [];
+            }
+        } else {
+            $hotContacts = $db->query("
                 SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
                        (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))) +
                        (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email))) AS thread_count
@@ -526,10 +637,54 @@ try {
                 INNER JOIN (
                     SELECT MAX(id) as max_id FROM inbox_emails GROUP BY LOWER(TRIM(from_email))
                 ) latest ON i.id = latest.max_id
-                WHERE i.id NOT IN ($excludeIds)
+                WHERE i.from_email NOT LIKE '%noreply%'
+                  AND i.from_email NOT LIKE '%no-reply%'
+                  AND i.from_email NOT LIKE '%jobalerts%'
+                  AND i.from_email NOT LIKE '%donotreply%'
+                  AND i.from_email NOT LIKE '%notification%'
+                  AND i.from_email NOT LIKE '%mailer-daemon%'
                 ORDER BY i.id DESC
-                LIMIT " . (5 - count($hotContacts))
-            )->fetchAll(PDO::FETCH_ASSOC);
+                LIMIT 5
+            ")->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        // If fewer than 5 contacts, backfill with most recent activity so list isn't empty
+        if (count($hotContacts) < 5) {
+            $excludeIds = !empty($hotContacts) ? implode(',', array_map('intval', array_column($hotContacts, 'id'))) : '0';
+            if ($isMember) {
+                if ($memberAcctId !== null) {
+                    $stmt = $db->prepare("
+                        SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
+                               (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email)) AND e.mail_account_id = ?) +
+                               (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email)) AND (i2.mail_account_id = ? OR LOWER(i2.to_email) = ?)) AS thread_count
+                        FROM inbox_emails i
+                        INNER JOIN (
+                            SELECT MAX(id) as max_id FROM inbox_emails WHERE (mail_account_id = ? OR LOWER(to_email) = ?) GROUP BY LOWER(TRIM(from_email))
+                        ) latest ON i.id = latest.max_id
+                        WHERE (i.mail_account_id = ? OR LOWER(i.to_email) = ?)
+                          AND i.id NOT IN ($excludeIds)
+                        ORDER BY i.id DESC
+                        LIMIT " . (5 - count($hotContacts))
+                    );
+                    $stmt->execute([$memberAcctId, $memberAcctId, $memberEmail, $memberAcctId, $memberEmail, $memberAcctId, $memberEmail]);
+                    $backfill = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                } else {
+                    $backfill = [];
+                }
+            } else {
+                $backfill = $db->query("
+                    SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
+                           (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))) +
+                           (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email))) AS thread_count
+                    FROM inbox_emails i
+                    INNER JOIN (
+                        SELECT MAX(id) as max_id FROM inbox_emails GROUP BY LOWER(TRIM(from_email))
+                    ) latest ON i.id = latest.max_id
+                    WHERE i.id NOT IN ($excludeIds)
+                    ORDER BY i.id DESC
+                    LIMIT " . (5 - count($hotContacts))
+                )->fetchAll(PDO::FETCH_ASSOC);
+            }
             $hotContacts = array_merge($hotContacts, $backfill);
         }
 
@@ -560,7 +715,7 @@ try {
             'hot_contacts' => $hotContacts,
             'system_health' => [
                 'smtp_host' => 'smtp.hostinger.com:465',
-                'smtp_user' => getenv('SMTP_USERNAME') ?: 'ray@rslsolution.com',
+                'smtp_user' => $isMember ? $currentUser['email'] : (getenv('SMTP_USERNAME') ?: 'ray@rslsolution.com'),
                 'imap_host' => 'imap.hostinger.com:993',
                 'imap_total' => $inboxTotal,
                 'sheets_count' => $sheetsCount

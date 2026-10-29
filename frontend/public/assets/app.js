@@ -854,6 +854,14 @@ async function load() {
   try {
     const data = await api('dashboard');
 
+    if ($('#ov-subtitle') && currentSession?.user) {
+      if (currentSession.user.role === 'member') {
+        $('#ov-subtitle').textContent = `Viewing email operations & metrics for ${currentSession.user.email}`;
+      } else {
+        $('#ov-subtitle').textContent = 'Real-time metrics, engagement volume, and deliverability status';
+      }
+    }
+
     // KPI Values
     if ($('#ov-stat-sent')) $('#ov-stat-sent').textContent = data.counts.sent ?? 0;
     if ($('#ov-stat-inbound')) $('#ov-stat-inbound').textContent = data.counts.inbox_total ?? 0;
@@ -963,7 +971,7 @@ async function init() {
         const nameEl = $('#sidebar-user-name');
         const roleEl = $('#sidebar-user-role-badge');
         if (badgeEl) badgeEl.hidden = false;
-        if (nameEl) nameEl.textContent = session.user.name || 'Colleague';
+        if (nameEl) nameEl.textContent = session.user.name || session.user.email || 'User';
         if (avatarEl) {
           const initial = (session.user.name || session.user.email || 'U').trim().charAt(0).toUpperCase();
           avatarEl.textContent = initial;
@@ -991,7 +999,12 @@ async function init() {
         loadUsers().catch(() => {});
       }
 
-      const activeHash = location.hash ? location.hash.replace(/^#/, '') : '';
+      let activeHash = location.hash ? location.hash.replace(/^#/, '') : '';
+      const isMember = (session.user?.role === 'member');
+      if (isMember && ['mail-accounts', 'users', 'integrations'].includes(activeHash)) {
+        activeHash = 'overview';
+        location.hash = '#overview';
+      }
       const savedView = activeHash || localStorage.getItem('rsl_active_view') || 'overview';
 
       // Pre-set view hidden attributes before revealing #app to prevent any FOUC / flash of overview

@@ -47,6 +47,11 @@ final class MailAccountService
             }
         }
 
+        // For members, do not fallback to admin's default mailbox
+        if ($role === 'member') {
+            return [];
+        }
+
         // Fallback to default active account if no assigned account
         $stmt = $db->query("SELECT * FROM mail_accounts WHERE is_default = 1 AND status = 'active' LIMIT 1");
         $default = $stmt->fetch(PDO::FETCH_ASSOC);

@@ -4,7 +4,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 ?>
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL · Communication Desk</title><link rel="stylesheet" href="/assets/app.css?v=58"><script>try{var v=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}}catch(e){}</script><script src="/assets/app.js?v=58" defer></script><script src="/assets/sheets.js?v=40" defer></script><script src="/assets/inbox.js?v=40" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL · Communication Desk</title><link rel="stylesheet" href="/assets/app.css?v=59"><script>try{var v=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}}catch(e){}</script><script src="/assets/app.js?v=59" defer></script><script src="/assets/sheets.js?v=40" defer></script><script src="/assets/inbox.js?v=40" defer></script></head>
 <body class="<?= $isAuthenticated ? 'is-authenticated' : 'is-unauthenticated' ?>">
 <aside><a class="brand" href="/"><img src="/assets/rsl-logo.png?v=52" alt="RSL" class="sidebar-rsl-logo" width="76" height="36"><span>WORKSPACE</span></a><div class="workspace">Communication Desk<small>EMAIL OPERATIONS</small></div><div class="sidebar-action-wrap"><button type="button" class="sidebar-compose-btn" data-view="compose"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg><span>Compose</span></button></div><nav aria-label="Main navigation">
 <button class="nav active" data-view="overview"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Overview</span></button>
@@ -25,7 +25,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
   <div>
     <div class="eyebrow">COMMUNICATION PERFORMANCE &amp; INTELLIGENCE</div>
     <h1 class="dash-title">Dashboard Overview</h1>
-    <p class="muted">Real-time metrics, engagement volume, and deliverability status</p>
+    <p class="muted" id="ov-subtitle">Real-time metrics, engagement volume, and deliverability status</p>
   </div>
   <div class="header-actions">
     <span class="overview-sync-status" id="overview-sync-status" style="font-size:12px;color:#66786c;display:inline-flex;align-items:center;gap:6px">

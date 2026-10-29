@@ -228,7 +228,11 @@ final class ImapClient
 
         $accountId = !empty($query['account_id']) ? (int) $query['account_id'] : null;
         $toEmail = !empty($query['to_email']) ? trim((string) $query['to_email']) : null;
-        if ($accountId !== null && $accountId > 0) {
+        if ($accountId !== null && $accountId > 0 && $toEmail !== null && $toEmail !== '') {
+            $conditions[] = "(mail_account_id = ? OR LOWER(to_email) = ?)";
+            $params[] = $accountId;
+            $params[] = strtolower($toEmail);
+        } elseif ($accountId !== null && $accountId > 0) {
             $conditions[] = "mail_account_id = ?";
             $params[] = $accountId;
         } elseif ($toEmail !== null && $toEmail !== '') {
@@ -242,7 +246,24 @@ final class ImapClient
         $countStmt->execute($params);
         $total = (int) $countStmt->fetchColumn();
 
-        $unreadCount = (int) $this->db->query("SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0")->fetchColumn();
+        // Calculate unread count strictly within the scoped mailbox criteria
+        $unreadConditions = ["is_read = 0"];
+        $unreadParams = [];
+        if ($accountId !== null && $accountId > 0 && $toEmail !== null && $toEmail !== '') {
+            $unreadConditions[] = "(mail_account_id = ? OR LOWER(to_email) = ?)";
+            $unreadParams[] = $accountId;
+            $unreadParams[] = strtolower($toEmail);
+        } elseif ($accountId !== null && $accountId > 0) {
+            $unreadConditions[] = "mail_account_id = ?";
+            $unreadParams[] = $accountId;
+        } elseif ($toEmail !== null && $toEmail !== '') {
+            $unreadConditions[] = "LOWER(to_email) = ?";
+            $unreadParams[] = strtolower($toEmail);
+        }
+        $unreadWhere = 'WHERE ' . implode(' AND ', $unreadConditions);
+        $unreadStmt = $this->db->prepare("SELECT COUNT(*) FROM inbox_emails {$unreadWhere}");
+        $unreadStmt->execute($unreadParams);
+        $unreadCount = (int) $unreadStmt->fetchColumn();
 
         $pages = max(1, (int) ceil($total / $size));
         $page = min($page, $pages);

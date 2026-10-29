@@ -25,6 +25,10 @@ final class EmailHistory
             $params = [$pattern,$pattern];
         }
         if ($status !== '') { $conditions[] = 'status = ?'; $params[] = $status; }
+        if (isset($input['mail_account_id']) && $input['mail_account_id'] !== '') {
+            $conditions[] = 'mail_account_id = ?';
+            $params[] = (int) $input['mail_account_id'];
+        }
         $where = $conditions ? ' WHERE ' . implode(' AND ', $conditions) : '';
         $count = $this->db->prepare('SELECT COUNT(*) FROM emails' . $where); $count->execute($params);
         $total = (int) $count->fetchColumn(); $pages = max(1, (int) ceil($total / $size)); $page = min($page, $pages);
