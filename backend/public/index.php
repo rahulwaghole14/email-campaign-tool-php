@@ -1,5 +1,7 @@
 <?php
 declare(strict_types=1);
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
 require dirname(__DIR__) . '/bootstrap.php';
 
 use App\Support\Database;
@@ -368,6 +370,24 @@ try {
         respond($imap->listing($queryParams));
     }
     if ($path === '/api/inbox/sync' && $method === 'POST') {
+        if ($currentUser['role'] === 'member') {
+            $memberAcctId = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : null;
+            if ($memberAcctId) {
+                $acct = MailAccountService::getById($db, $memberAcctId, true);
+                if ($acct && $acct['status'] === 'active') {
+                    try {
+                        $client = new ImapClient($db, $acct);
+                        $res = $client->sync(30);
+                        respond(['new_count' => (int) ($res['new_count'] ?? 0)]);
+                    } catch (\Throwable $t) {
+                        error_log("Member inbox sync error for account {$memberAcctId}: " . $t->getMessage());
+                        respond(['new_count' => 0, 'notice' => 'Mailbox could not be contacted. Verify credentials in Mail Accounts.']);
+                    }
+                }
+            }
+            respond(['new_count' => 0]);
+        }
+
         $allAccounts = MailAccountService::getAll($db, true);
         $totalNew = 0;
         if (!empty($allAccounts)) {
@@ -377,7 +397,9 @@ try {
                     $client = new ImapClient($db, $acct);
                     $res = $client->sync(30);
                     $totalNew += (int) ($res['new_count'] ?? 0);
-                } catch (\Throwable $t) {}
+                } catch (\Throwable $t) {
+                    error_log("Inbox sync error for account {$acct['id']}: " . $t->getMessage());
+                }
             }
             respond(['new_count' => $totalNew]);
         } else {

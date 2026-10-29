@@ -403,7 +403,11 @@ final class ImapClient
 
         stream_set_timeout($fp, 20);
         // Read greeting
-        fgets($fp);
+        $greeting = @fgets($fp);
+        if ($greeting === false) {
+            @fclose($fp);
+            throw new RuntimeException("IMAP server closed connection immediately.");
+        }
 
         // Login
         $this->sendCommand($fp, "LOGIN {$this->username} {$this->password}");
@@ -416,12 +420,18 @@ final class ImapClient
      */
     private function sendCommand($fp, string $command): array
     {
+        if (!$fp || !is_resource($fp)) {
+            throw new RuntimeException("IMAP connection is not active.");
+        }
         $tag = 'A' . str_pad((string) (++$this->tagIndex), 4, '0', STR_PAD_LEFT);
-        fwrite($fp, "{$tag} {$command}\r\n");
+        $written = @fwrite($fp, "{$tag} {$command}\r\n");
+        if ($written === false || $written === 0) {
+            throw new RuntimeException("Failed to write to IMAP stream [{$command}]. Connection lost.");
+        }
 
         $lines = [];
-        while (!feof($fp)) {
-            $line = fgets($fp);
+        while (!@feof($fp)) {
+            $line = @fgets($fp);
             if ($line === false) break;
             $lines[] = rtrim($line, "\r\n");
 

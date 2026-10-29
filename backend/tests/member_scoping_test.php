@@ -69,3 +69,4 @@ if (count($unassignedAccounts) !== 0) {
 echo "✓ Unassigned member safely receives 0 mailboxes (no admin leak).\n";
 
 echo "All Member Scoping checks passed successfully!\n";
+
