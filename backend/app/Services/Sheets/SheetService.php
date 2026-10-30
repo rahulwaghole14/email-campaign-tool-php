@@ -56,8 +56,23 @@ final class SheetService
     public function sources(): array
     {
         $rows = $this->db->query('SELECT * FROM sheet_sources ORDER BY id DESC')->fetchAll();
-        foreach ($rows as &$row) $row['mapping'] = json_decode($row['mapping'], true);
+        foreach ($rows as &$row) {
+            $row['mapping'] = json_decode($row['mapping'], true);
+            $row['tab_title'] = $this->tabTitle((string) $row['spreadsheet_id'], (int) $row['sheet_id']);
+        }
         return $rows;
+    }
+
+    private function tabTitle(string $spreadsheetId, int $sheetId): string
+    {
+        try {
+            $meta = $this->metadata($spreadsheetId);
+            foreach ($meta['sheets'] ?? [] as $item) {
+                $props = $item['properties'] ?? [];
+                if ((int) ($props['sheetId'] ?? -1) === $sheetId) return trim((string) ($props['title'] ?? ''));
+            }
+        } catch (\Throwable) {}
+        return '';
     }
 
     public function source(int $id): array
@@ -113,28 +128,75 @@ final class SheetService
     public static function records(array $data, array $mapping, int $header): array
     {
         self::mapping($mapping, $data['headers']);
-        $rows = []; $counts = [];
+        $rows = [];
+        $counts = [];
+
         foreach ($data['values'] as $offset => $cells) {
             if (!array_filter($cells, fn($value) => trim((string) $value) !== '')) continue;
-            $values = []; $formulas = [];
+            $values = [];
+            $formulas = [];
             foreach ($mapping as $field => $label) {
                 $value = (string) ($cells[array_search($label, $data['headers'], true)] ?? '');
                 $values[$field] = $value;
                 if (str_starts_with($value, '=')) $formulas[] = $field;
             }
-            $key = trim($values['id']); $counts[$key] = ($counts[$key] ?? 0) + 1;
-            $rows[] = ['row' => $header + $offset + 1, 'record_id' => $key, 'values' => $values, 'formulas' => $formulas,
-                'version' => hash('sha256', json_encode([$data['headers'], $cells], JSON_THROW_ON_ERROR))];
+            $baseKey = trim((string) ($values['id'] ?? ''));
+            $rawEmail = (string) ($values['email'] ?? '');
+
+            // Auto-expansion: Check if this cell contains multiple email addresses separated by ; , or |
+            $candidateEmails = [];
+            if (preg_match('/[;,|]/', $rawEmail)) {
+                $splitParts = preg_split('/[;,|\n\r]+/', $rawEmail);
+                foreach ($splitParts as $part) {
+                    $cleaned = trim(preg_replace('/^[`\'"\s\x{00a0}\x{200b}]+|[`\'"\s\x{00a0}\x{200b}]+$/u', '', (string) $part));
+                    if (filter_var($cleaned, FILTER_VALIDATE_EMAIL)) {
+                        $candidateEmails[] = $cleaned;
+                    }
+                }
+            }
+
+            // If multiple valid emails found in the cell, expand into distinct individual records
+            if (count($candidateEmails) > 1) {
+                $subIdx = 1;
+                foreach ($candidateEmails as $subEmail) {
+                    $expandedValues = $values;
+                    $expandedValues['email'] = $subEmail;
+                    $subRecordId = $baseKey !== '' ? "{$baseKey}.{$subIdx}" : "row" . ($header + $offset + 1) . ".{$subIdx}";
+                    $counts[$subRecordId] = ($counts[$subRecordId] ?? 0) + 1;
+                    $rows[] = [
+                        'row' => $header + $offset + 1,
+                        'record_id' => $subRecordId,
+                        'parent_id' => $baseKey,
+                        'values' => $expandedValues,
+                        'formulas' => $formulas,
+                        'version' => hash('sha256', json_encode([$data['headers'], $cells, $subEmail], JSON_THROW_ON_ERROR))
+                    ];
+                    $subIdx++;
+                }
+            } else {
+                // Single email or normal row
+                $key = $baseKey;
+                $counts[$key] = ($counts[$key] ?? 0) + 1;
+                $rows[] = [
+                    'row' => $header + $offset + 1,
+                    'record_id' => $key,
+                    'values' => $values,
+                    'formulas' => $formulas,
+                    'version' => hash('sha256', json_encode([$data['headers'], $cells], JSON_THROW_ON_ERROR))
+                ];
+            }
         }
+
         foreach ($rows as &$row) {
             $issues = [];
             if ($row['record_id'] === '') $issues[] = 'Missing ID';
             elseif ($counts[$row['record_id']] !== 1) $issues[] = 'Duplicate ID';
             if ($row['formulas']) $issues[] = 'Mapped formula cells require review in the original spreadsheet';
             $cleanEmail = trim(preg_replace('/^[`\'"\s\x{00a0}\x{200b}]+|[`\'"\s\x{00a0}\x{200b}]+$/u', '', (string) $row['values']['email']));
-            if (!filter_var($cleanEmail, FILTER_VALIDATE_EMAIL)) $issues[] = 'Invalid email';
-            if (trim($row['values']['subject']) === '') $issues[] = 'Missing subject';
-            if (trim($row['values']['body']) === '') $issues[] = 'Missing message';
+            if ($cleanEmail === '') $issues[] = 'Missing email';
+            elseif (!filter_var($cleanEmail, FILTER_VALIDATE_EMAIL)) $issues[] = 'Invalid email';
+            if (trim((string) $row['values']['subject']) === '') $issues[] = 'Missing subject';
+            if (trim((string) $row['values']['body']) === '') $issues[] = 'Missing message';
             $row['editable'] = $row['record_id'] !== '' && $counts[$row['record_id']] === 1 && !in_array('id', $row['formulas'], true);
             $row['issues'] = $issues;
         }
@@ -148,6 +210,11 @@ final class SheetService
 
     public function preview(int $sourceId): array
     {
+        // Auto-recover any emails stuck in processing for > 5 minutes
+        try {
+            \App\Services\Email\EmailProcessor::recoverStuckProcessing($this->db, 300);
+        } catch (\Throwable) {}
+
         $source = $this->source($sourceId);
         $data = $this->inspect($source['spreadsheet_id'], (int) $source['sheet_id'], (int) $source['header_row']);
         $records = self::records($data, $source['mapping'], (int) $source['header_row']);
@@ -159,6 +226,11 @@ final class SheetService
             $row['email_id'] = $email ? (int) $email['id'] : null;
         }
         return ['source' => $source, 'headers' => $data['headers'], 'tab' => $data['tab'], 'records' => $records];
+    }
+
+    public function resetProcessing(int $sourceId): int
+    {
+        return \App\Services\Email\EmailProcessor::recoverStuckProcessing($this->db, 0, true);
     }
 
     private function current(array $preview, array $input): array
@@ -249,8 +321,12 @@ final class SheetService
                 continue;
             }
             $cleanEmail = trim(preg_replace('/^[`\'"\s\x{00a0}\x{200b}]+|[`\'"\s\x{00a0}\x{200b}]+$/u', '', (string) ($values['email'] ?? '')));
+            if ($cleanEmail === '') {
+                $skipped[] = ['record_id' => $recId, 'reason' => 'Missing email'];
+                continue;
+            }
             if (!filter_var($cleanEmail, FILTER_VALIDATE_EMAIL)) {
-                $skipped[] = ['record_id' => $recId, 'reason' => 'Invalid email address'];
+                $skipped[] = ['record_id' => $recId, 'reason' => 'Invalid email'];
                 continue;
             }
 
@@ -284,12 +360,26 @@ final class SheetService
 
         $sentCount = 0;
         $failedCount = count($skipped);
+        $resultsByRecId = [];
+
         foreach ($batchResults as $res) {
+            $eId = (int) ($res['id'] ?? 0);
+            $recId = $emailIds[$eId] ?? null;
+            if ($recId) {
+                $resultsByRecId[$recId] = $res['status'];
+            }
             if ($res['status'] === 'sent' || $res['status'] === 'dry_run') {
                 $sentCount++;
             } else {
                 $failedCount++;
             }
+        }
+
+        // Live write-back: Update status column in the spreadsheet if mapped or detected
+        try {
+            $this->writebackBatchStatus($preview, $resultsByRecId);
+        } catch (\Throwable $t) {
+            error_log("Writeback status warning: " . $t->getMessage());
         }
 
         return [
@@ -298,5 +388,59 @@ final class SheetService
             'total' => count($recordIds),
             'skipped' => $skipped,
         ];
+    }
+
+    /**
+     * Automatically write dispatch status back into the spreadsheet rows.
+     */
+    private function writebackBatchStatus(array $preview, array $resultsByRecId): void
+    {
+        $headers = $preview['headers'];
+        $statusColIdx = -1;
+        foreach ($headers as $idx => $h) {
+            $hLower = strtolower(trim((string) $h));
+            if ($hLower === 'status' || $hLower === 'delivery status' || $hLower === 'mail status' || $hLower === 'email status') {
+                $statusColIdx = $idx;
+                break;
+            }
+        }
+
+        if ($statusColIdx === -1) {
+            return; // No status column in header, skip writeback safely
+        }
+
+        $source = $preview['source'];
+        $recordsById = [];
+        foreach ($preview['records'] as $r) {
+            $recordsById[$r['record_id']] = $r;
+        }
+
+        $requests = [];
+        $nowStr = date('Y-m-d H:i');
+        foreach ($resultsByRecId as $recId => $status) {
+            $row = $recordsById[$recId] ?? null;
+            if (!$row || empty($row['row'])) continue;
+
+            $statusText = ($status === 'sent' || $status === 'dry_run') ? "Sent ({$nowStr})" : "Failed";
+            $requests[] = [
+                'updateCells' => [
+                    'range' => [
+                        'sheetId' => (int) $source['sheet_id'],
+                        'startRowIndex' => $row['row'] - 1,
+                        'endRowIndex' => $row['row'],
+                        'startColumnIndex' => $statusColIdx,
+                        'endColumnIndex' => $statusColIdx + 1
+                    ],
+                    'rows' => [
+                        ['values' => [['userEnteredValue' => ['stringValue' => $statusText]]]]
+                    ],
+                    'fields' => 'userEnteredValue'
+                ]
+            ];
+        }
+
+        if (!empty($requests)) {
+            ($this->request)('POST', rawurlencode($source['spreadsheet_id']) . ':batchUpdate', ['requests' => $requests]);
+        }
     }
 }

@@ -8,11 +8,14 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(data.error || 'Request failed.');
   return data;
 }
+function routeParts() {
+  const raw = (location.hash || '').replace(/^#/, '');
+  const [name, ...rest] = raw.split('/').filter(Boolean);
+  return { name: name || '', extra: rest.join('/') };
+}
+
 function view(name) {
   if (!name) name = 'overview';
-  if (currentSession?.user?.role === 'member' && ['mail-accounts', 'users', 'integrations'].includes(name)) {
-    name = 'overview';
-  }
   const targetView = document.getElementById(name);
   if (!targetView) name = 'overview';
 
@@ -34,7 +37,8 @@ function view(name) {
   if (name !== 'thread-view') {
     try {
       localStorage.setItem('rsl_active_view', name);
-      if (location.hash !== '#' + name) {
+      const current = routeParts();
+      if (current.name !== name) {
         history.replaceState(null, '', '#' + name);
       }
     } catch(e) {}
@@ -45,7 +49,6 @@ function view(name) {
   if (name === 'inbox') window.loadInbox?.();
   if (name === 'sent') loadSentPage?.();
   if (name === 'mail-accounts') loadMailAccounts?.();
-  if (name === 'users') loadUsers?.();
   if (name === 'compose') {
     const titleEl = $('#compose-title');
     const submitLabel = $('#compose-submit-label');
@@ -154,7 +157,7 @@ function renderEmails() {
     $('#emails').append(row);
   }
   if (!rows.length) {
-    const row = document.createElement('tr'), td = cell(''); td.colSpan = 5; td.className = 'empty';
+    const row = document.createElement('tr'), td = cell(''); td.colSpan = 6; td.className = 'empty';
     td.innerHTML = '<div class="empty-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg></div>';
     const heading = document.createElement('h3'), description = document.createElement('p'), button = document.createElement('button');
     const filtered = term || $('#email-status').value;
@@ -200,6 +203,40 @@ function getAvatarStyle(str) {
 window.currentThreadOrigin = 'inbox';
 window.currentThreadId = null;
 
+function formatQuotedHistory(text) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n').map(line => line.replace(/^(?:\s*>)+ ?/, '').trimEnd());
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  while (lines.length && lines[0].trim() === '') lines.shift();
+  if (!lines.length) return '';
+  let headerEnd = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/wrote:\s*$/i.test(lines[i].trim())) { headerEnd = i; break; }
+  }
+  const header = (headerEnd === -1 ? [] : lines.slice(0, headerEnd + 1)).map(line => line.trim()).filter(Boolean).join(' ');
+  const body = headerEnd === -1 ? lines : lines.slice(headerEnd + 1);
+  const paragraphs = [];
+  let chunk = [];
+  const flush = () => {
+    if (!chunk.length) return;
+    paragraphs.push(chunk.join(' ').replace(/\s+/g, ' ').trim());
+    chunk = [];
+  };
+  for (const line of body) {
+    if (line.trim() === '') flush();
+    else chunk.push(line.trim());
+  }
+  flush();
+  return [header, ...paragraphs].filter(Boolean).join('\n\n');
+}
+
+function visibleReplyHtml(html) {
+  const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  doc.querySelectorAll('.gmail_quote, .gmail_quote_container, .gmail_attr').forEach(node => node.remove());
+  while (doc.body.lastChild && doc.body.lastChild.nodeName === 'BR') doc.body.lastChild.remove();
+  const text = (doc.body.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  return { text, html: doc.body.innerHTML.trim() };
+}
+
 function formatEmailBodyText(text) {
   if (!text) return '';
   const escaped = escapeHtml(text);
@@ -211,23 +248,89 @@ function formatEmailBodyText(text) {
   });
 }
 
+function isMimeStub(text) {
+  const value = String(text || '').trim();
+  if (!value) return true;
+  if (/^boundary\s*=\s*"?[A-Za-z0-9_=.\-\/]+"?$/i.test(value)) return true;
+  if (/^this is a mime-encapsulated message\.?$/i.test(value)) return true;
+  return false;
+}
+
+function htmlNoticeText(html) {
+  let value = String(html || '');
+  if (!value.trim()) return '';
+  value = value.replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  value = value.replace(/<script[\s\S]*?<\/script>/gi, ' ');
+  value = value.replace(/<head[\s\S]*?<\/head>/gi, ' ');
+  value = value.replace(/<a\b[^>]*href=["']mailto:([^"']+)["'][^>]*>[\s\S]*?<\/a>/gi, '$1');
+  value = value.replace(/<br\s*\/?>/gi, '\n');
+  value = value.replace(/<\/(p|div|tr|h\d|li|table)>/gi, '\n');
+  value = value.replace(/<[^>]+>/g, ' ');
+  const holder = document.createElement('textarea');
+  holder.innerHTML = value;
+  value = holder.value.replace(/\u00a0/g, ' ');
+  value = value.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n');
+  return value.trim();
+}
+
+function bounceNoticeText(plain, html) {
+  let text = String(plain || '').trim();
+  if (isMimeStub(text)) text = htmlNoticeText(html);
+  text = text.replace(/([^\s<>]+@[^\s<>]+)\s*<mailto:\1>/gi, '$1');
+  text = text.replace(/<mailto:([^>]+)>/gi, '$1');
+  text = text.replace(/\n*Original message headers:\s*[\s\S]*$/i, '');
+  return text.trim();
+}
+
+function failedRecipientFrom(text) {
+  const patterns = [
+    /Final-Recipient:[^;\n]*;\s*(?:rfc822;)?\s*<?([^\s<>,"']+@[^\s<>,"']+)>?/i,
+    /([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})\s*<mailto:/i,
+    /mailto:([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) return match[1].replace(/^mailto:/i, '').replace(/[>,.;]+$/, '');
+  }
+  const addresses = text.match(/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/gi) || [];
+  const recipient = addresses.find(address => !/^(postmaster|mailer-daemon|noreply)@/i.test(address));
+  return recipient || '';
+}
+
+function bounceReasonFrom(text) {
+  const quoted = text.match(/returned\s+['"]([^'"]+)['"]/i);
+  if (quoted) return quoted[1].replace(/\s+/g, ' ').trim();
+  const said = text.match(/said:\s*([\s\S]{0,280}?)(?:\(in reply to|\n\s*\n|$)/i);
+  if (said && /\b[45]\d{2}\b/.test(said[1])) {
+    return said[1].replace(/\s+/g, ' ').replace(/[.\s]+$/, '').trim();
+  }
+  const code = text.match(/\b([45]\d{2}\s+[45]\.\d+\.\d+[^\r\n'<]{0,180})/);
+  if (code) return code[1].replace(/\s+/g, ' ').trim();
+  const diagnostic = text.match(/Diagnostic-Code:[^;]*;\s*([^\r\n]+)/i);
+  if (diagnostic) return diagnostic[1].trim();
+  const human = text.match(/((?:The email address you entered couldn't be found|mailbox unavailable|mailbox not found|user unknown|No such user)[^\r\n.]*)/i);
+  if (human) return human[1].trim();
+  return '';
+}
+
 function createExpandedMessageElement(msg, senderName, av, initial, dateFormatted, mainBody, quotedText, isCollapsible = false) {
   const el = document.createElement('div');
   el.className = 'gmail-msg-expanded' + (isCollapsible ? ' is-collapsible' : '');
   
-  const hasHtml = Boolean(msg.html_body && msg.html_body.trim());
+  const visible = visibleReplyHtml(msg.html_body || '');
+  const richHtml = Boolean(visible.text && /<(img|table|ul|ol)\b/i.test(visible.html));
   const hasPlain = Boolean(mainBody && mainBody.trim());
 
   const trimmedHtml = quotedText ? `
     <div class="thread-trimmed-wrapper">
       <button type="button" class="thread-trimmed-toggle" title="Show trimmed content">&hellip;</button>
       <div class="thread-trimmed-content" hidden style="display:none">
-        <div class="thread-quoted-block">${formatEmailBodyText(quotedText)}</div>
+        <div class="thread-quoted-block">${formatEmailBodyText(formatQuotedHistory(quotedText))}</div>
       </div>
     </div>
   ` : '';
 
-  const formatToggleBtn = (hasHtml && hasPlain) ? `
+  const formatToggleBtn = (richHtml && hasPlain) ? `
     <button type="button" class="thread-format-toggle-btn" title="Toggle Plain Text / HTML">View plain text</button>
   ` : '';
 
@@ -258,38 +361,68 @@ function createExpandedMessageElement(msg, senderName, av, initial, dateFormatte
   `;
 
   const bodyContainer = el.querySelector('.gmail-body-container');
-  let showingHtml = hasHtml;
+  let showingHtml = richHtml;
 
   function renderBody() {
     bodyContainer.replaceChildren();
-    if (showingHtml && hasHtml) {
+
+    // Friendly Delivery Failure Report Card if this message is a bounce
+    const bounceSubject = /undeliver|delivery fail|returned to sender|failure notice/i.test(msg.subject || '');
+    if (msg.is_bounce || (msg.status === 'bounced') || bounceSubject) {
+      const card = document.createElement('div');
+      card.className = 'bounce-report-card';
+      
+      const text = bounceNoticeText(mainBody, msg.html_body || '');
+      const failedRecipient = failedRecipientFrom(text);
+      const errorReason = bounceReasonFrom(text);
+
+      card.innerHTML = `
+        <div class="bounce-report-banner">
+          <div class="bounce-report-icon">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div class="bounce-report-summary">
+            <h4>Email Delivery Failure Notification</h4>
+            <p>The recipient's mail server rejected or could not deliver the message sent from your workspace.</p>
+          </div>
+        </div>
+        <div class="bounce-report-meta">
+          ${failedRecipient ? `<div class="bounce-meta-row"><span class="bounce-meta-label">Intended Recipient</span><strong class="bounce-meta-val">${escapeHtml(failedRecipient)}</strong></div>` : ''}
+          ${errorReason ? `<div class="bounce-meta-row"><span class="bounce-meta-label">Server Diagnostic</span><span class="bounce-meta-val bounce-err-val">${escapeHtml(errorReason)}</span></div>` : ''}
+          <div class="bounce-meta-row"><span class="bounce-meta-label">Reported By</span><span class="bounce-meta-val">${escapeHtml(msg.sender_name || msg.sender_email)}</span></div>
+        </div>
+        <div class="bounce-raw-section">
+          <div class="bounce-raw-title">Full Delivery Diagnostics</div>
+          <pre class="bounce-raw-pre">${escapeHtml(text || 'No raw diagnostics provided.')}</pre>
+        </div>
+      `;
+      bodyContainer.append(card);
+      return;
+    }
+
+    if (showingHtml && richHtml) {
       const iframe = document.createElement('iframe');
       iframe.className = 'email-html-frame';
       iframe.sandbox = 'allow-popups allow-popups-to-escape-sandbox allow-same-origin';
+      iframe.style.height = '0px';
       iframe.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>
-        html,body{margin:0;padding:4px 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#202124;line-height:1.5;background:transparent;word-break:break-word}
+        html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#202124;line-height:1.5;background:transparent;word-break:break-word}
         img{max-width:100%!important;height:auto}
         table{max-width:100%!important}
         a{color:#1a73e8}
-      </style></head><body>${msg.html_body}</body></html>`;
+      </style></head><body>${visible.html}</body></html>`;
 
       function resize() {
         try {
           const doc = iframe.contentDocument || iframe.contentWindow.document;
-          if (doc && doc.body) {
-            doc.body.style.margin = '0';
-            const h = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 24);
-            iframe.style.height = (h + 12) + 'px';
-          }
+          if (!doc || !doc.body) return;
+          iframe.style.height = '0px';
+          const h = doc.body.scrollHeight;
+          if (h > 0) iframe.style.height = (h + 2) + 'px';
         } catch (e) {}
       }
 
-      iframe.addEventListener('load', () => {
-        resize();
-        setTimeout(resize, 200);
-        setTimeout(resize, 600);
-      });
-
+      iframe.addEventListener('load', resize);
       bodyContainer.append(iframe);
       el._iframeResize = resize;
     } else if (hasPlain) {
@@ -435,6 +568,23 @@ async function openThreadReader(id, origin = 'inbox') {
     const subject = email.subject || '(No subject)';
     if (subjectEl) subjectEl.textContent = subject;
 
+    const isBounce = Boolean(email.is_bounce || (thread.length === 1 && thread[0].is_bounce));
+    if (badgeEl) {
+      if (isBounce) {
+        badgeEl.textContent = 'Delivery Failure';
+        badgeEl.style.background = '#fce8e6';
+        badgeEl.style.color = '#c5221f';
+      } else {
+        badgeEl.textContent = origin === 'sent' ? 'Sent' : (origin === 'overview' ? 'Queue' : 'Inbox');
+        badgeEl.style.background = '';
+        badgeEl.style.color = '';
+      }
+    }
+
+    if (bottomActions) {
+      bottomActions.hidden = isBounce;
+    }
+
     let counterpart = '';
     if (origin === 'inbox') counterpart = email.from_email;
     else counterpart = email.recipient;
@@ -576,10 +726,7 @@ async function openEmailDetail(id) {
       }
     }
 
-    const date = value => value ? new Date(value).toLocaleString() : 'Not recorded';
     const recipient = email.recipient || 'Unknown';
-    const av = getAvatarStyle(recipient);
-    const initial = recipient.trim().charAt(0).toUpperCase();
 
     let attachmentsHtml = '';
     if (email.attachments && email.attachments.length) {
@@ -600,84 +747,132 @@ async function openEmailDetail(id) {
       }
     }
 
-    let activityHtml = '';
-    if (data.activity && data.activity.length) {
-      activityHtml = `
-        <div class="detail-section-title" style="margin-top:24px">Delivery Timeline</div>
-        <div class="delivery-timeline">
-          ${data.activity.map((item, idx) => `
-            <div class="timeline-step">
-              <div class="timeline-marker ${idx === 0 ? 'active' : ''}"></div>
-              <div class="timeline-body">
-                <div class="timeline-text">${escapeHtml(item.detail)}</div>
-                <div class="timeline-date">${date(item.created_at)}</div>
-              </div>
-            </div>
-          `).join('')}
+    let failureHtml = '';
+    if (email.status === 'failed') {
+      const failedEvent = [...(data.activity || [])].reverse().find(item => item.action === 'failed');
+      const reason = String(email.error || failedEvent?.detail || 'Delivery could not be confirmed.').trim();
+      failureHtml = `
+        <div class="delivery-status-banner error" style="margin-top:18px">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          <span>This email was not sent. ${escapeHtml(reason)}</span>
         </div>
       `;
     }
 
-    const renderThreadFn = window.renderThreadStackHtml || (typeof renderThreadStackHtml === 'function' ? renderThreadStackHtml : null);
-    if (data.thread && data.thread.length > 1 && renderThreadFn) {
-      target.innerHTML = `
-        <div class="gmail-subject-row">
-          <h1 class="gmail-subject-title">${escapeHtml(email.subject || '(No subject)')}</h1>
-          <span class="thread-count-badge">${data.thread.length} messages</span>
-          <span class="badge ${email.status}">${email.status.toUpperCase()}</span>
-        </div>
-        ${renderThreadFn(data.thread, recipient, email.subject)}
-        ${activityHtml}
+    const thread = (data.thread && data.thread.length) ? data.thread : [{
+      type: 'outgoing',
+      sender_name: 'Me (RSL Desk)',
+      sender_email: email.sender_email || '',
+      recipient: email.recipient || '',
+      body: email.body || '',
+      html_body: email.html_body || '',
+      snippet: '',
+      quoted_history: '',
+      created_at: email.sent_at || email.created_at,
+      status: email.status,
+      subject: email.subject || ''
+    }];
+    target.replaceChildren();
+    const subjectRow = document.createElement('div');
+    subjectRow.className = 'gmail-subject-row';
+    subjectRow.innerHTML = `<h1 class="gmail-subject-title">${escapeHtml(email.subject || '(No subject)')}</h1>`;
+    const stream = document.createElement('div');
+    stream.className = 'gmail-messages-stream';
+    renderCanvasMessages(thread, stream, recipient, email.subject || '');
+    target.append(subjectRow, stream);
+    if (failureHtml) {
+      const failure = document.createElement('div');
+      failure.innerHTML = failureHtml;
+      if (failure.firstElementChild) target.append(failure.firstElementChild);
+    }
+    if (attachmentsHtml) {
+      const attachments = document.createElement('div');
+      attachments.innerHTML = attachmentsHtml;
+      while (attachments.firstChild) target.append(attachments.firstChild);
+    }
+    if (email.status !== 'failed') {
+      const actions = document.createElement('div');
+      actions.className = 'gmail-bottom-actions';
+      actions.innerHTML = `
+        <button type="button" class="gmail-action-pill" data-detail-reply>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v2.5"/></svg>
+          <span>Reply</span>
+        </button>
+        <button type="button" class="gmail-action-pill" data-detail-forward>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5V17"/></svg>
+          <span>Forward</span>
+        </button>
       `;
-      const attachFn = window.attachThreadEvents || (typeof attachThreadEvents === 'function' ? attachThreadEvents : null);
-      if (attachFn) {
-        attachFn(target, recipient, email.subject, async () => {
+      const composer = document.createElement('div');
+      composer.className = 'gmail-inline-composer';
+      composer.hidden = true;
+      composer.innerHTML = `
+        <div class="inline-composer-header">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v2.5"/></svg>
+          <span>Reply to <strong>${escapeHtml(recipient)}</strong></span>
+        </div>
+        <textarea rows="5" placeholder="Write your reply..."></textarea>
+        <div class="inline-composer-footer">
+          <div class="composer-footer-left">
+            <button type="button" class="primary detail-reply-send">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              <span>Send</span>
+            </button>
+          </div>
+          <div class="composer-footer-right">
+            <button type="button" class="quiet icon-only detail-reply-discard" title="Discard draft" aria-label="Discard draft">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+      `;
+      target.append(actions, composer);
+      const replyBox = composer.querySelector('textarea');
+      actions.querySelector('[data-detail-reply]').addEventListener('click', () => {
+        actions.hidden = true;
+        composer.hidden = false;
+        replyBox.focus();
+      });
+      composer.querySelector('.detail-reply-discard').addEventListener('click', () => {
+        replyBox.value = '';
+        composer.hidden = true;
+        actions.hidden = false;
+      });
+      composer.querySelector('.detail-reply-send').addEventListener('click', async event => {
+        const button = event.currentTarget;
+        const text = replyBox.value.trim();
+        if (!text) {
+          notice('Please type a reply message before sending.', true);
+          replyBox.focus();
+          return;
+        }
+        const orig = email.subject || '';
+        button.disabled = true;
+        try {
+          await api('emails', {
+            method: 'POST',
+            body: JSON.stringify({
+              recipient,
+              subject: orig.toLowerCase().startsWith('re:') ? orig : 'Re: ' + orig,
+              body: text,
+              idempotency_key: crypto.randomUUID(),
+              send_now: true
+            })
+          });
+          notice('Reply sent successfully via Hostinger SMTP!');
           await openEmailDetail(id);
-          await loadSentPage?.();
-        });
-      }
-    } else {
-      target.innerHTML = `
-        <div class="gmail-subject-row">
-          <h1 class="gmail-subject-title">${escapeHtml(email.subject || '(No subject)')}</h1>
-          <span class="badge ${email.status}">${email.status.toUpperCase()}</span>
-        </div>
-
-        <div class="gmail-sender-card">
-          <div class="gmail-avatar-large" style="background:${av.bg};color:${av.text}">${initial}</div>
-          <div class="gmail-sender-meta">
-            <div class="gmail-sender-line1">
-              <span class="gmail-sender-display">${escapeHtml(recipient)}</span>
-              <span class="gmail-sender-date">${date(email.sent_at || email.created_at)}</span>
-            </div>
-            <div class="gmail-sender-line2">
-              <span>To: <span class="gmail-to-pill">${escapeHtml(recipient)}</span></span>
-              ${email.cc ? `<span>Cc: <span class="gmail-to-pill">${escapeHtml(email.cc)}</span></span>` : ''}
-              ${email.bcc ? `<span>Bcc: <span class="gmail-to-pill">${escapeHtml(email.bcc)}</span></span>` : ''}
-            </div>
-          </div>
-        </div>
-
-        ${email.status === 'sent' ? `
-          <div class="delivery-status-banner success">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
-            <span>Accepted by mail server &middot; Dispatched successfully to recipient mailbox.</span>
-          </div>
-        ` : ''}
-
-        ${email.error ? `
-          <div class="delivery-status-banner error">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-            <span>${escapeHtml(email.error)}</span>
-          </div>
-        ` : ''}
-
-        <div class="detail-section-title" style="margin-top:18px">Message Content</div>
-        <div class="gmail-plain-body">${escapeHtml(email.body || '')}</div>
-
-        ${attachmentsHtml}
-        ${activityHtml}
-      `;
+        } catch (err) {
+          notice('Failed to send reply: ' + err.message, true);
+          button.disabled = false;
+        }
+      });
+      actions.querySelector('[data-detail-forward]').addEventListener('click', () => {
+        dialog.close();
+        view('compose');
+        const orig = email.subject || '';
+        const subjInput = $('input[name="subject"]');
+        if (subjInput) subjInput.value = orig.toLowerCase().startsWith('fwd:') ? orig : 'Fwd: ' + orig;
+      });
     }
   } catch (e) {
     if (request === detailRequest) {
@@ -771,12 +966,14 @@ function renderTrafficChart(days) {
   `;
 }
 
-function renderDonutChart(deliveryRate, totalSent, totalFailed, totalPending) {
+function renderDonutChart(accepted, bounced, pending) {
   const container = $('#overview-donut-container');
   if (!container) return;
-  const circ = 2 * Math.PI * 40; // 251.327
-  const pct = Math.min(100, Math.max(0, deliveryRate));
-  const offset = circ - (pct / 100) * circ;
+  const total = Math.max(0, accepted) + Math.max(0, bounced) + Math.max(0, pending);
+  const share = (count) => total > 0 ? (count / total) * 100 : 0;
+  const pct = total > 0 ? Math.round(share(accepted) * 10) / 10 : 100;
+  const circ = 2 * Math.PI * 40;
+  const offset = circ - (Math.min(100, Math.max(0, pct)) / 100) * circ;
 
   container.innerHTML = `
     <svg width="140" height="140" viewBox="0 0 100 100">
@@ -785,13 +982,13 @@ function renderDonutChart(deliveryRate, totalSent, totalFailed, totalPending) {
               stroke-dasharray="${circ}" stroke-dashoffset="${offset}"
               stroke-linecap="round" transform="rotate(-90 50 50)"/>
       <text x="50" y="47" text-anchor="middle" dominant-baseline="middle" font-size="18" font-weight="700" fill="#1f2923">${pct}%</text>
-      <text x="50" y="62" text-anchor="middle" dominant-baseline="middle" font-size="8.5" font-weight="700" fill="#66786c">DELIVERY</text>
+      <text x="50" y="62" text-anchor="middle" dominant-baseline="middle" font-size="8.5" font-weight="700" fill="#66786c">ACCEPTED</text>
     </svg>
   `;
 
-  if ($('#ov-ratio-sent')) $('#ov-ratio-sent').textContent = `${totalSent} (${pct}%)`;
-  if ($('#ov-ratio-failed')) $('#ov-ratio-failed').textContent = `${totalFailed} (${(100 - pct).toFixed(1)}%)`;
-  if ($('#ov-ratio-pending')) $('#ov-ratio-pending').textContent = `${totalPending} (0%)`;
+  if ($('#ov-ratio-sent')) $('#ov-ratio-sent').textContent = `${accepted} (${pct}%)`;
+  if ($('#ov-ratio-failed')) $('#ov-ratio-failed').textContent = `${bounced} (${share(bounced).toFixed(1)}%)`;
+  if ($('#ov-ratio-pending')) $('#ov-ratio-pending').textContent = `${pending} (${share(pending).toFixed(1)}%)`;
 }
 
 function renderHotContacts(contacts) {
@@ -862,48 +1059,54 @@ async function load() {
       }
     }
 
-    // KPI Values
-    if ($('#ov-stat-sent')) $('#ov-stat-sent').textContent = data.counts.sent ?? 0;
-    if ($('#ov-stat-inbound')) $('#ov-stat-inbound').textContent = data.counts.inbox_total ?? 0;
-    if ($('#ov-stat-inbox-badge')) $('#ov-stat-inbox-badge').textContent = `● ${data.counts.inbox_unread ?? 0} Unread`;
-    if ($('#ov-stat-response-rate')) $('#ov-stat-response-rate').textContent = `${data.counts.response_rate ?? 0}%`;
+    const counts = data.counts || {};
+    const bounces = counts.bounces ?? 0;
+    const failed = counts.failed ?? 0;
+    const pending = (counts.pending ?? 0) + (counts.processing ?? 0);
+    const replies = counts.inbox_replies ?? counts.inbox_total ?? 0;
+    const week = data.week_totals || {};
+
+    if ($('#ov-stat-sent')) $('#ov-stat-sent').textContent = counts.sent ?? 0;
+    if ($('#ov-stat-inbound')) $('#ov-stat-inbound').textContent = replies;
+    if ($('#ov-stat-inbox-badge')) $('#ov-stat-inbox-badge').textContent = `● ${counts.client_unread ?? counts.inbox_unread ?? 0} unread`;
+    if ($('#ov-stat-response-rate')) $('#ov-stat-response-rate').textContent = `${counts.response_rate ?? 0}%`;
     if ($('#ov-stat-response-label')) {
-      $('#ov-stat-response-label').textContent = (data.counts.response_rate ?? 0) > 0 ? 'Verified Campaign Replies' : 'Awaiting Prospect Replies';
+      const replied = counts.replied_recipients ?? 0;
+      const recipients = counts.sent_recipients ?? 0;
+      $('#ov-stat-response-label').textContent = recipients > 0
+        ? `${replied} of ${recipients} recipients replied`
+        : 'No sent recipients yet';
     }
-    if ($('#ov-stat-delivery-label')) $('#ov-stat-delivery-label').textContent = `${data.counts.delivery_rate ?? 100}% Accepted by Hostinger`;
+    if ($('#ov-stat-delivery-label')) $('#ov-stat-delivery-label').textContent = `${counts.delivery_rate ?? 100}% accepted by Hostinger`;
 
-    const failed = data.counts.failed ?? 0;
-    const deliveryRate = data.counts.delivery_rate ?? 100;
-    if ($('#ov-stat-health')) {
-      $('#ov-stat-health').textContent = failed === 0 ? '100%' : `${deliveryRate}%`;
-    }
+    const healthRate = counts.health_rate ?? counts.delivery_rate ?? 100;
+    if ($('#ov-stat-health')) $('#ov-stat-health').textContent = `${healthRate}%`;
     if ($('#ov-stat-health-badge')) {
-      $('#ov-stat-health-badge').textContent = failed === 0 ? 'Zero Bounces · Optimal Health' : `${failed} Delivery Failures`;
+      const faults = bounces + failed;
+      $('#ov-stat-health-badge').textContent = faults === 0 ? 'No bounce notices' : `${bounces} bounce notices`;
       const badgeWrap = $('#ov-stat-health-badge').closest('.dash-badge');
-      if (badgeWrap) {
-        badgeWrap.className = failed === 0 ? 'dash-badge green' : 'dash-badge red';
-      }
+      if (badgeWrap) badgeWrap.className = faults === 0 ? 'dash-badge green' : 'dash-badge red';
     }
 
-    // Dynamic Sync Status & Peak Window
     if ($('#overview-sync-status')) {
-      const now = new Date();
+      const synced = data.last_sync ? new Date(data.last_sync) : null;
+      const label = synced && !Number.isNaN(synced.getTime())
+        ? `Last inbox sync ${synced.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+        : 'Inbox has not been synced from this desk yet';
       $('#overview-sync-status').innerHTML = `
         <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#34a853"></span>
-        <span>Synced ${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+        <span>${label}</span>
       `;
     }
     if ($('#ov-peak-window') && data.peak_window) {
       $('#ov-peak-window').textContent = data.peak_window;
     }
 
-    // Legends
-    if ($('#ov-legend-sent')) $('#ov-legend-sent').textContent = `Outgoing Sent (${data.counts.sent ?? 0} msgs)`;
-    if ($('#ov-legend-received')) $('#ov-legend-received').textContent = `Inbound Replies (${data.counts.inbox_total ?? 0} msgs)`;
+    if ($('#ov-legend-sent')) $('#ov-legend-sent').textContent = `Sent these 7 days (${week.sent ?? 0})`;
+    if ($('#ov-legend-received')) $('#ov-legend-received').textContent = `Client replies these 7 days (${week.received ?? 0})`;
 
-    // Render Charts
     renderTrafficChart(data.traffic_7d || []);
-    renderDonutChart(data.counts.delivery_rate ?? 100, data.counts.sent ?? 0, data.counts.failed ?? 0, data.counts.pending ?? 0);
+    renderDonutChart(counts.sent ?? 0, bounces + failed, pending);
     renderHotContacts(data.hot_contacts || []);
 
     // Infrastructure Status
@@ -911,7 +1114,19 @@ async function load() {
       if ($('#ov-health-smtp')) $('#ov-health-smtp').textContent = `${data.system_health.smtp_host} · ${data.system_health.smtp_user} · Active`;
       if ($('#ov-health-imap')) $('#ov-health-imap').textContent = `${data.system_health.imap_host} · Synced · ${data.system_health.imap_total} stored emails`;
       if ($('#ov-health-sheets')) $('#ov-health-sheets').textContent = `${data.system_health.sheets_count} Sheets connected · Live sync active`;
-      if ($('#ov-health-db')) $('#ov-health-db').textContent = `${data.counts.pending ?? 0} pending queue · Latency < 2ms`;
+      if ($('#ov-health-db')) $('#ov-health-db').textContent = `${pending} waiting to send`;
+    }
+
+    const summaryTitle = $('#ov-health-summary-title');
+    const summarySub = $('#ov-health-summary-sub');
+    if (summaryTitle && summarySub) {
+      if (bounces + failed === 0) {
+        summaryTitle.textContent = 'Pipeline fully operational';
+        summarySub.textContent = 'Mail is leaving Hostinger and no bounce notices are stored.';
+      } else {
+        summaryTitle.textContent = 'Bounce notices need review';
+        summarySub.textContent = `${bounces} bounce notices are in the inbox. Hostinger accepted ${counts.sent ?? 0} sends.`;
+      }
     }
 
     if (typeof data.inbox_unread !== 'undefined') window.updateInboxBadge?.(data.inbox_unread);
@@ -964,48 +1179,15 @@ async function init() {
         $('#logout').style.display = 'inline-flex';
       }
 
-      // Sidebar user profile badge
-      if (session.user) {
-        const badgeEl = $('#sidebar-user-badge');
-        const avatarEl = $('#sidebar-user-avatar');
-        const nameEl = $('#sidebar-user-name');
-        const roleEl = $('#sidebar-user-role-badge');
-        if (badgeEl) badgeEl.hidden = false;
-        if (nameEl) nameEl.textContent = session.user.name || session.user.email || 'User';
-        if (avatarEl) {
-          const initial = (session.user.name || session.user.email || 'U').trim().charAt(0).toUpperCase();
-          avatarEl.textContent = initial;
-        }
-        if (roleEl) {
-          const isAdmin = (session.user.role === 'admin');
-          roleEl.textContent = isAdmin ? 'Admin' : 'Member';
-          roleEl.className = 'sidebar-user-role-badge ' + (isAdmin ? 'is-admin' : 'is-member');
-        }
-
-        // Show/hide management navigation for non-admin
-        const isMember = (session.user.role === 'member');
-        for (const navId of ['#nav-mail-accounts', '#nav-users', '#nav-integrations']) {
-          const el = $(navId);
-          if (el) {
-            el.hidden = isMember;
-            el.style.display = isMember ? 'none' : '';
-          }
-        }
-      }
-
       // Load mail accounts early
       await loadMailAccounts();
-      if (session.user?.role === 'admin') {
-        loadUsers().catch(() => {});
-      }
 
-      let activeHash = location.hash ? location.hash.replace(/^#/, '') : '';
-      const isMember = (session.user?.role === 'member');
-      if (isMember && ['mail-accounts', 'users', 'integrations'].includes(activeHash)) {
-        activeHash = 'overview';
-        location.hash = '#overview';
+      const route = routeParts();
+      const savedView = route.name || localStorage.getItem('rsl_active_view') || 'overview';
+      if (!route.name && savedView === 'sheets') {
+        const savedSheet = localStorage.getItem('rsl_open_sheet');
+        if (savedSheet) history.replaceState(null, '', '#sheets/' + savedSheet);
       }
-      const savedView = activeHash || localStorage.getItem('rsl_active_view') || 'overview';
 
       // Pre-set view hidden attributes before revealing #app to prevent any FOUC / flash of overview
       document.querySelectorAll('.view').forEach(el => el.hidden = el.id !== savedView);
@@ -1295,9 +1477,32 @@ if (composeCard) {
   });
 }
 
+$('#compose-form').addEventListener('input', () => {
+  const error = $('#compose-form-error');
+  if (error) error.hidden = true;
+});
+
 $('#compose-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const button = event.target.querySelector('#compose-submit-btn') || event.target.querySelector('.primary');
+  const form = event.target;
+  const error = $('#compose-form-error');
+  const missing = [
+    [form.recipient, 'a recipient'],
+    [form.subject, 'a subject'],
+    [form.body, 'a message'],
+  ].filter(([field]) => !field.value.trim());
+  if (missing.length) {
+    if (error) {
+      const labels = missing.map(([, label]) => label);
+      const list = labels.length === 1 ? labels[0] : labels.slice(0, -1).join(', ') + ' and ' + labels.at(-1);
+      error.textContent = 'Add ' + list + ' before sending.';
+      error.hidden = false;
+    }
+    missing[0][0].focus();
+    return;
+  }
+  if (error) error.hidden = true;
+  const button = form.querySelector('#compose-submit-btn') || form.querySelector('.primary');
   const label = button ? (button.querySelector('span') || button) : null;
   const originalText = label ? label.textContent : 'Send email';
   if (button) button.disabled = true;
@@ -1412,19 +1617,26 @@ async function loadSentPage() {
   try {
     const size = $('#sent-size')?.value || 25;
     const search = $('#sent-search')?.value.trim() || '';
+    const mailAccountId = $('#sent-account-filter')?.value || '';
     const params = new URLSearchParams({ page: sentPage, page_size: size, search, status: 'sent' });
+    if (mailAccountId) params.set('mail_account_id', mailAccountId);
+    const from = sentRangeStart($('#sent-date-filter')?.value || '');
+    if (from) params.set('from', from);
     const data = await api('emails?' + params);
     if (request !== sentRequest) return;
     const p = data.pagination;
     sentPage = p.page; sentPages = p.pages;
     renderSentRows(data.emails);
-    if (rangeEl) rangeEl.textContent = `${p.from}–${p.to} of ${p.total} sent emails`;
+    const rangeText = p.total ? `${p.from}–${p.to} of ${p.total} sent emails` : '0 sent emails';
+    if (rangeEl) rangeEl.textContent = rangeText;
     if ($('#sent-page')) $('#sent-page').textContent = `Page ${p.page} of ${p.pages}`;
-    if (prevBtn) prevBtn.disabled = p.page <= 1;
-    if (nextBtn) nextBtn.disabled = p.page >= p.pages;
+    const isFirst = p.page <= 1;
+    const isLast = p.page >= p.pages;
+    if (prevBtn) prevBtn.disabled = isFirst;
+    if (nextBtn) nextBtn.disabled = isLast;
   } catch(e) {
-    if (request === sentRequest && rangeEl) {
-      rangeEl.textContent = 'Could not load sent emails.';
+    if (request === sentRequest) {
+      if (rangeEl) rangeEl.textContent = 'Could not load sent emails.';
     }
   }
 }
@@ -1432,6 +1644,10 @@ async function loadSentPage() {
 function renderSentRows(list) {
   const tbody = $('#sent-rows');
   if (!tbody) return;
+  const mailboxCount = [...($('#sent-account-filter')?.options || [])].filter(option => option.value).length;
+  const showVia = !$('#sent-account-filter')?.value && mailboxCount > 1;
+  const viaHead = $('#sent-via-head');
+  if (viaHead) viaHead.hidden = !showVia;
   tbody.replaceChildren();
   for (const email of list) {
     const tr = document.createElement('tr');
@@ -1453,21 +1669,32 @@ function renderSentRows(list) {
         <div class="inbox-avatar" style="background:${av.bg};color:${av.text}">${initial}</div>
         <div class="inbox-sender-info">
           <strong class="inbox-sender-name">${escapeHtml(recipient)}</strong>
-          <small class="inbox-sender-email">To: ${escapeHtml(recipient)}</small>
         </div>
       </div>
+    `;
+
+    // Sent via mailbox cell
+    const senderTd = document.createElement('td');
+    senderTd.className = 'sent-cell-sender';
+    const senderLabel = email.sender_name || email.sender_email || 'Default Mailbox';
+    senderTd.innerHTML = `
+      <span class="inbox-mailbox-badge" title="${escapeHtml(email.sender_email || '')}" style="margin:0;max-width:140px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${escapeHtml(senderLabel)}
+      </span>
     `;
 
     // Subject & preview snippet (Gmail style)
     const subjectTd = document.createElement('td');
     subjectTd.className = 'sent-cell-subject';
-    const snippet = (email.body || '').replace(/[\r\n\t]+/g, ' ').trim();
+    const snippet = (email.snippet || '').replace(/\s+/g, ' ').trim();
     const threadPill = Number(email.thread_count) > 1 ? `<span class="thread-count-badge">${email.thread_count}</span>` : '';
     subjectTd.innerHTML = `
-      <div class="inbox-preview-wrap">
-        <span class="inbox-subject-text">${escapeHtml(email.subject || '(No subject)')}</span>
-        ${threadPill}
-        ${snippet ? `<span class="inbox-snippet-separator">&middot;</span><span class="inbox-snippet-text">${escapeHtml(snippet)}</span>` : ''}
+      <div class="sent-subject-block">
+        <div class="sent-subject-line">
+          <span class="inbox-subject-text">${escapeHtml(email.subject || '(No subject)')}</span>
+          ${threadPill}
+        </div>
+        ${snippet ? `<div class="sent-snippet">${escapeHtml(snippet)}</div>` : ''}
       </div>
     `;
 
@@ -1477,15 +1704,6 @@ function renderSentRows(list) {
     dateTd.textContent = new Date(email.sent_at || email.created_at).toLocaleString([], {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
-
-    // Status cell
-    const statusTd = document.createElement('td');
-    statusTd.className = 'sent-cell-status';
-    const badge = document.createElement('span');
-    const st = email.status || 'sent';
-    badge.className = `badge ${st}`;
-    badge.textContent = st.charAt(0).toUpperCase() + st.slice(1).replace('_', ' ');
-    statusTd.append(badge);
 
     // Action cell
     const actionTd = document.createElement('td');
@@ -1500,16 +1718,35 @@ function renderSentRows(list) {
     });
     actionTd.append(btn);
 
-    tr.append(recipientTd, subjectTd, dateTd, statusTd, actionTd);
+    tr.append(recipientTd, subjectTd, dateTd, actionTd);
+    if (showVia) tr.insertBefore(senderTd, subjectTd);
     tbody.append(tr);
   }
   if (!list.length) {
     const tr = document.createElement('tr');
-    const td = cell(''); td.colSpan = 5; td.className = 'empty';
+    const td = cell(''); td.colSpan = showVia ? 5 : 4; td.className = 'empty';
     td.innerHTML = '<div class="empty-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></div><h3>No sent emails found</h3><p>Emails you send from Google Sheets or manual compose will appear here.</p>';
     tr.append(td); tbody.append(tr);
   }
 }
+
+function sentRangeStart(preset) {
+  if (!preset) return '';
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (preset === '7') start.setDate(start.getDate() - 6);
+  if (preset === '30') start.setDate(start.getDate() - 29);
+  return start.toISOString();
+}
+
+$('#sent-account-filter')?.addEventListener('change', () => {
+  sentPage = 1;
+  loadSentPage().catch(e => notice(e.message, true));
+});
+$('#sent-date-filter')?.addEventListener('change', () => {
+  sentPage = 1;
+  loadSentPage().catch(e => notice(e.message, true));
+});
 
 $('#sent-search')?.addEventListener('input', () => {
   clearTimeout(sentSearchTimer);
@@ -1530,34 +1767,46 @@ $('#sent-refresh')?.addEventListener('click', async () => {
 });
 
 window.addEventListener('hashchange', () => {
-  const hash = location.hash ? location.hash.replace(/^#/, '') : 'overview';
-  if (document.getElementById(hash)) view(hash);
+  const name = routeParts().name || 'overview';
+  if (document.getElementById(name)) view(name);
 });
 
 /* ==========================================================================
-   MAIL ACCOUNTS & MULTI-USER RBAC MANAGEMENT
+   MAIL ACCOUNTS & MULTI-ACCOUNT MANAGEMENT
    ========================================================================== */
 let currentMailAccounts = [];
-let currentTeamUsers = [];
 
 window.getActiveSenderAccount = function() {
+  const confirmSelect = $('#send-confirm-sender-select');
+  if (confirmSelect && confirmSelect.value) {
+    const found = currentMailAccounts.find(a => String(a.id) === String(confirmSelect.value));
+    if (found) return found;
+  }
+  const sheetSelect = $('#sheet-sender-select');
+  if (sheetSelect && sheetSelect.value) {
+    const found = currentMailAccounts.find(a => String(a.id) === String(sheetSelect.value));
+    if (found) return found;
+  }
   const senderSelect = $('#compose-sender');
   if (senderSelect && senderSelect.value) {
     const found = currentMailAccounts.find(a => String(a.id) === String(senderSelect.value));
     if (found) return found;
   }
-  const defaultAcc = currentMailAccounts.find(a => a.is_default);
-  return defaultAcc || currentMailAccounts[0] || null;
+  return currentMailAccounts[0] || null;
 };
 
 async function loadMailAccounts() {
   try {
     const res = await api('mail-accounts');
     currentMailAccounts = Array.isArray(res) ? res : (res.accounts || []);
+    if (currentMailAccounts.length === 0) {
+      currentMailAccounts = [{ id: 1, name: 'RSL Communications', email: 'ray@rslsolution.com', is_default: 1 }];
+    }
+    window.currentMailAccounts = currentMailAccounts;
     renderMailAccountsConfig(currentMailAccounts);
-    populateComposeSender(currentMailAccounts);
-    if (window.setInboxAccountOptions && currentSession?.user) {
-      window.setInboxAccountOptions(currentMailAccounts, currentSession.user.role, currentSession.user.assigned_account_id);
+    populateAccountDropdowns(currentMailAccounts);
+    if (window.setInboxAccountOptions) {
+      window.setInboxAccountOptions(currentMailAccounts);
     }
     const badge = $('#mailboxes-count-badge');
     if (badge) badge.textContent = currentMailAccounts.length;
@@ -1566,44 +1815,107 @@ async function loadMailAccounts() {
   }
 }
 
-function populateComposeSender(accounts) {
-  const select = $('#compose-sender');
+function populateAccountDropdowns(accounts) {
+  // 1. Compose Sender Select
+  const composeSelect = $('#compose-sender');
   const lockedWrap = $('#compose-sender-locked');
-  const lockedBadge = $('#compose-sender-badge');
-  const user = currentSession?.user;
+  if (lockedWrap) lockedWrap.hidden = true;
 
-  if (!select) return;
-  select.replaceChildren();
+  if (composeSelect) {
+    const curVal = composeSelect.value;
+    composeSelect.replaceChildren();
+    composeSelect.hidden = false;
 
-  if (user && user.role === 'member') {
-    const assigned = accounts.find(a => a.id === user.assigned_account_id) || accounts[0];
-    if (assigned) {
+    for (let i = 0; i < accounts.length; i++) {
+      const acc = accounts[i];
       const opt = document.createElement('option');
-      opt.value = assigned.id;
-      opt.textContent = assigned.name ? `${assigned.name} <${assigned.email}>` : assigned.email;
-      opt.selected = true;
-      select.append(opt);
-      select.hidden = true;
-      if (lockedWrap && lockedBadge) {
-        lockedBadge.innerHTML = `<svg class="icon mini-icon" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> ${escapeHtml(assigned.name ? `${assigned.name} <${assigned.email}>` : assigned.email)}`;
-        lockedWrap.hidden = false;
+      opt.value = acc.id;
+      opt.textContent = acc.name ? `${acc.name} <${acc.email}>` : acc.email;
+      if (curVal && String(curVal) === String(acc.id)) {
+        opt.selected = true;
+      } else if (!curVal && i === 0) {
+        opt.selected = true;
       }
+      composeSelect.append(opt);
     }
-    return;
   }
 
-  if (lockedWrap) lockedWrap.hidden = true;
-  select.hidden = false;
+  // 2. Sent emails Account Filter Select
+  const sentSelect = $('#sent-account-filter');
+  if (sentSelect) {
+    const curVal = sentSelect.value;
+    sentSelect.replaceChildren();
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All Mailboxes';
+    sentSelect.append(allOpt);
 
-  for (const acc of accounts) {
-    const opt = document.createElement('option');
-    opt.value = acc.id;
-    opt.textContent = acc.name ? `${acc.name} <${acc.email}>` : acc.email;
-    if (acc.is_default) {
-      opt.textContent += ' [Default]';
-      opt.selected = true;
+    for (const acc of accounts) {
+      const opt = document.createElement('option');
+      opt.value = acc.id;
+      opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+      if (curVal && String(curVal) === String(acc.id)) opt.selected = true;
+      sentSelect.append(opt);
     }
-    select.append(opt);
+  }
+
+  // 3. Sheet Workspace Sender Select
+  const sheetSelect = $('#sheet-sender-select');
+  if (sheetSelect) {
+    const curVal = sheetSelect.value || composeSelect?.value;
+    sheetSelect.replaceChildren();
+    for (let i = 0; i < accounts.length; i++) {
+      const acc = accounts[i];
+      const opt = document.createElement('option');
+      opt.value = acc.id;
+      opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+      if (curVal && String(curVal) === String(acc.id)) opt.selected = true;
+      else if (!curVal && i === 0) opt.selected = true;
+      sheetSelect.append(opt);
+    }
+    if (!sheetSelect.dataset.synced) {
+      sheetSelect.dataset.synced = 'true';
+      sheetSelect.addEventListener('change', () => {
+        if (composeSelect) composeSelect.value = sheetSelect.value;
+        const confirmSel = $('#send-confirm-sender-select');
+        if (confirmSel) confirmSel.value = sheetSelect.value;
+      });
+    }
+  }
+
+  // 4. Send Confirm Dialog Sender Select
+  const confirmSelect = $('#send-confirm-sender-select');
+  if (confirmSelect) {
+    const curVal = confirmSelect.value || composeSelect?.value;
+    confirmSelect.replaceChildren();
+    for (let i = 0; i < accounts.length; i++) {
+      const acc = accounts[i];
+      const opt = document.createElement('option');
+      opt.value = acc.id;
+      opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+      if (curVal && String(curVal) === String(acc.id)) opt.selected = true;
+      else if (!curVal && i === 0) opt.selected = true;
+      confirmSelect.append(opt);
+    }
+    if (!confirmSelect.dataset.synced) {
+      confirmSelect.dataset.synced = 'true';
+      confirmSelect.addEventListener('change', () => {
+        if (composeSelect) composeSelect.value = confirmSelect.value;
+        const shSel = $('#sheet-sender-select');
+        if (shSel) shSel.value = confirmSelect.value;
+      });
+    }
+  }
+
+  // Sync compose select change back
+  if (composeSelect && !composeSelect.dataset.synced) {
+    composeSelect.dataset.synced = 'true';
+    composeSelect.addEventListener('change', () => {
+      const shSel = $('#sheet-sender-select');
+      if (shSel) shSel.value = composeSelect.value;
+      const confirmSel = $('#send-confirm-sender-select');
+      if (confirmSel) confirmSel.value = composeSelect.value;
+    });
   }
 }
 
@@ -1617,18 +1929,17 @@ function renderMailAccountsConfig(accounts) {
     return;
   }
 
-  const isAdmin = currentSession?.user?.role === 'admin';
+  const canManage = true;
 
   for (const acc of accounts) {
     const tr = document.createElement('tr');
     
     // Account cell
     const tdAccount = document.createElement('td');
-    const defaultPill = acc.is_default ? '<span class="dash-badge green" style="margin-left:6px;font-size:10.5px">Default</span>' : '';
     tdAccount.innerHTML = `
       <div style="display:flex;align-items:center">
         <div>
-          <strong style="color:#213129;display:block">${escapeHtml(acc.name || 'Mail Account')} ${defaultPill}</strong>
+          <strong style="color:#213129;display:block">${escapeHtml(acc.name || 'Mail Account')}</strong>
           <small class="muted" style="font-size:12px">${escapeHtml(acc.email)}</small>
         </div>
       </div>
@@ -1678,7 +1989,7 @@ function renderMailAccountsConfig(accounts) {
     });
     group.append(testBtn);
 
-    if (isAdmin) {
+    if (canManage) {
       // Edit button
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
@@ -1687,25 +1998,23 @@ function renderMailAccountsConfig(accounts) {
       editBtn.addEventListener('click', () => openMailboxModal(acc));
       group.append(editBtn);
 
-      // Delete button
-      if (!acc.is_default) {
-        const delBtn = document.createElement('button');
-        delBtn.type = 'button';
-        delBtn.className = 'quiet';
-        delBtn.style.color = '#c5221f';
-        delBtn.textContent = 'Delete';
-        delBtn.addEventListener('click', async () => {
-          if (!confirm(`Are you sure you want to disconnect mailbox "${acc.email}"?`)) return;
-          try {
-            await api(`mail-accounts/${acc.id}`, { method: 'DELETE' });
-            notice(`Mailbox ${acc.email} disconnected.`);
-            await loadMailAccounts();
-          } catch (err) {
-            notice(err.message, true);
-          }
-        });
-        group.append(delBtn);
-      }
+      // Delete button (available for ALL accounts dynamically)
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'quiet';
+      delBtn.style.color = '#c5221f';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async () => {
+        if (!confirm(`Are you sure you want to disconnect mailbox "${acc.email}"?`)) return;
+        try {
+          await api(`mail-accounts/${acc.id}`, { method: 'DELETE' });
+          notice(`Mailbox ${acc.email} disconnected.`);
+          await loadMailAccounts();
+        } catch (err) {
+          notice(err.message, true);
+        }
+      });
+      group.append(delBtn);
     }
 
     tdActions.append(group);
@@ -1753,154 +2062,6 @@ function openMailboxModal(acc = null) {
     $('#mb-imap-user').value = '';
     $('#mb-imap-pass').value = '';
     $('#mb-imap-section').hidden = true;
-  }
-
-  modal.showModal();
-}
-
-async function loadUsers() {
-  try {
-    const res = await api('users');
-    currentTeamUsers = Array.isArray(res) ? res : (res.users || []);
-    renderUsersConfig(currentTeamUsers);
-    const badge = $('#team-count-badge');
-    if (badge) badge.textContent = currentTeamUsers.length;
-  } catch (err) {
-    console.error('Failed to load team users:', err);
-  }
-}
-
-function renderUsersConfig(users) {
-  const tbody = $('#users-table-body');
-  if (!tbody) return;
-  tbody.replaceChildren();
-
-  if (!users || users.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">No users found.</td></tr>';
-    return;
-  }
-
-  const currentUserId = currentSession?.user?.id;
-
-  for (const u of users) {
-    const tr = document.createElement('tr');
-    
-    // User name & email
-    const tdUser = document.createElement('td');
-    const isMe = (u.id === currentUserId);
-    tdUser.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="sidebar-user-avatar" style="width:28px;height:28px;font-size:12px">${escapeHtml((u.name || u.email || 'U').charAt(0).toUpperCase())}</div>
-        <div>
-          <strong style="color:#213129;display:block">${escapeHtml(u.name || 'User')} ${isMe ? '<small class="dash-badge green" style="font-size:10px">You</small>' : ''}</strong>
-          <small class="muted" style="font-size:12px">${escapeHtml(u.email)}</small>
-        </div>
-      </div>
-    `;
-
-    // Role
-    const tdRole = document.createElement('td');
-    const isAdmin = u.role === 'admin';
-    tdRole.innerHTML = `<span class="dash-badge ${isAdmin ? 'green' : 'blue'}" style="font-weight:700">${isAdmin ? 'Administrator' : 'Member'}</span>`;
-
-    // Assigned Mailbox
-    const tdMailbox = document.createElement('td');
-    if (u.account_email) {
-      tdMailbox.innerHTML = `<span class="inbox-mailbox-badge" style="margin:0">${escapeHtml(u.account_email)}</span>`;
-    } else {
-      tdMailbox.innerHTML = `<span class="muted" style="font-size:12px">${isAdmin ? 'All Connected Mailboxes' : 'None assigned'}</span>`;
-    }
-
-    // Created date
-    const tdCreated = document.createElement('td');
-    tdCreated.className = 'muted';
-    tdCreated.style.fontSize = '12px';
-    tdCreated.textContent = u.created_at ? new Date(u.created_at).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : '—';
-
-    // Actions
-    const tdActions = document.createElement('td');
-    tdActions.style.textAlign = 'right';
-    tdActions.style.paddingRight = '16px';
-    const group = document.createElement('div');
-    group.className = 'table-btn-group';
-
-    const editBtn = document.createElement('button');
-    editBtn.type = 'button';
-    editBtn.className = 'quiet';
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => openUserModal(u));
-    group.append(editBtn);
-
-    if (!isMe && (u.role !== 'admin' || users.filter(x => x.role === 'admin').length > 1)) {
-      const delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.className = 'quiet';
-      delBtn.style.color = '#c5221f';
-      delBtn.textContent = 'Delete';
-      delBtn.addEventListener('click', async () => {
-        if (!confirm(`Are you sure you want to remove user "${u.name || u.email}"?`)) return;
-        try {
-          await api(`users/${u.id}`, { method: 'DELETE' });
-          notice(`User ${u.email} removed.`);
-          await loadUsers();
-        } catch (err) {
-          notice(err.message, true);
-        }
-      });
-      group.append(delBtn);
-    }
-
-    tdActions.append(group);
-    tr.append(tdUser, tdRole, tdMailbox, tdCreated, tdActions);
-    tbody.append(tr);
-  }
-}
-
-function openUserModal(u = null) {
-  const modal = $('#user-modal');
-  const title = $('#user-modal-title');
-  const accountSelect = $('#u-account');
-  const passHint = $('#u-pass-hint');
-  const passInput = $('#u-password');
-  if (!modal) return;
-
-  $('#user-form').reset();
-
-  // Populate accounts in dropdown
-  if (accountSelect) {
-    accountSelect.replaceChildren();
-    const noneOpt = document.createElement('option');
-    noneOpt.value = '';
-    noneOpt.textContent = 'Select an assigned mailbox...';
-    accountSelect.append(noneOpt);
-    for (const acc of currentMailAccounts) {
-      const opt = document.createElement('option');
-      opt.value = acc.id;
-      opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
-      if (acc.is_default) opt.textContent += ' [Default]';
-      accountSelect.append(opt);
-    }
-  }
-
-  if (u) {
-    if (title) title.textContent = 'Edit User Permissions';
-    $('#user-id').value = u.id;
-    $('#u-name').value = u.name || '';
-    $('#u-email').value = u.email || '';
-    $('#u-role').value = u.role || 'member';
-    if (accountSelect && u.assigned_account_id) {
-      accountSelect.value = String(u.assigned_account_id);
-    }
-    if (passHint) passHint.hidden = false;
-    if (passInput) passInput.required = false;
-  } else {
-    if (title) title.textContent = 'Add New User';
-    $('#user-id').value = '';
-    $('#u-name').value = '';
-    $('#u-email').value = '';
-    $('#u-role').value = 'member';
-    if (passHint) passHint.hidden = true;
-    if (passInput) passInput.required = true;
   }
 
   modal.showModal();
@@ -2012,41 +2173,156 @@ $('#mailbox-form')?.addEventListener('submit', async event => {
   }
 });
 
-// User Modal Events
-$('#btn-add-member')?.addEventListener('click', () => openUserModal());
-$('#close-user-modal')?.addEventListener('click', () => $('#user-modal')?.close());
-$('#btn-cancel-user')?.addEventListener('click', () => $('#user-modal')?.close());
-
-$('#user-form')?.addEventListener('submit', async event => {
-  event.preventDefault();
-  const btn = $('#btn-save-user');
-  if (btn) btn.disabled = true;
-
-  try {
-    const idVal = $('#user-id').value;
-    const payload = {
-      name: $('#u-name').value.trim(),
-      email: $('#u-email').value.trim(),
-      role: $('#u-role').value,
-      assigned_account_id: $('#u-account').value ? Number($('#u-account').value) : null
-    };
-    if (idVal) payload.id = Number(idVal);
-    const pass = $('#u-password').value;
-    if (pass) payload.password = pass;
-
-    await api('users', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-
-    notice(idVal ? `User updated successfully.` : `User added successfully!`);
-    $('#user-modal')?.close();
-    await loadUsers();
-  } catch (err) {
-    notice(err.message, true);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-});
-
+installDeskMenus();
 init();
+
+function installDeskMenus() {
+  let menu = null;
+  let openSelect = null;
+  let activeIndex = 0;
+
+  const choices = () => menu ? [...menu.querySelectorAll('button')] : [];
+
+  function closeMenu() {
+    menu?.remove();
+    menu = null;
+    openSelect = null;
+  }
+
+  function placeMenu() {
+    if (!menu || !openSelect) return;
+    const rect = openSelect.getBoundingClientRect();
+    const margin = 8;
+    menu.style.minWidth = Math.max(rect.width, 180) + 'px';
+    menu.style.left = Math.max(margin, rect.left) + 'px';
+    menu.style.top = (rect.bottom + 4) + 'px';
+    const box = menu.getBoundingClientRect();
+    if (box.right > window.innerWidth - margin) {
+      menu.style.left = Math.max(margin, window.innerWidth - box.width - margin) + 'px';
+    }
+    if (box.bottom > window.innerHeight - margin) {
+      menu.style.top = Math.max(margin, rect.top - box.height - 4) + 'px';
+    }
+  }
+
+  function paintActive() {
+    choices().forEach((button, index) => {
+      button.classList.toggle('is-active', index === activeIndex);
+    });
+    choices()[activeIndex]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function choose(index) {
+    const button = choices()[index];
+    const select = openSelect;
+    if (!button || !select || button.disabled) return;
+    select.value = button.dataset.value ?? '';
+    closeMenu();
+    select.focus({ preventScroll: true });
+    select.dispatchEvent(new Event('input', { bubbles: true }));
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function openMenu(select) {
+    closeMenu();
+    const options = [...select.options].filter(option => !option.hidden);
+    if (!options.length) return;
+    const host = select.closest('dialog[open]') || document.body;
+    menu = document.createElement('div');
+    menu.className = 'desk-menu';
+    menu.setAttribute('role', 'listbox');
+    openSelect = select;
+    let group = '';
+    options.forEach(option => {
+      const parent = option.parentElement;
+      const label = parent && parent.tagName === 'OPTGROUP' ? parent.label : '';
+      if (label && label !== group) {
+        group = label;
+        const heading = document.createElement('div');
+        heading.className = 'desk-menu-label';
+        heading.textContent = label;
+        menu.append(heading);
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'option');
+      button.dataset.value = option.value;
+      button.disabled = option.disabled;
+      const current = option.index === select.selectedIndex;
+      button.classList.toggle('is-current', current);
+      button.setAttribute('aria-selected', current ? 'true' : 'false');
+      const name = document.createElement('span');
+      name.textContent = option.text;
+      const mark = document.createElement('span');
+      mark.className = 'desk-menu-mark';
+      mark.textContent = current ? '✓' : '';
+      mark.setAttribute('aria-hidden', 'true');
+      button.append(name, mark);
+      button.addEventListener('click', () => choose(choices().indexOf(button)));
+      menu.append(button);
+    });
+    host.append(menu);
+    activeIndex = Math.max(0, choices().findIndex(button => button.classList.contains('is-current')));
+    placeMenu();
+    paintActive();
+    select.focus({ preventScroll: true });
+  }
+
+  document.addEventListener('mousedown', event => {
+    const target = event.target instanceof Element ? event.target : null;
+    const select = target?.closest('select') || null;
+    const inMenu = Boolean(menu && target && menu.contains(target));
+    if (menu && !inMenu && select !== openSelect) closeMenu();
+    if (!select || select.disabled || select.multiple || Number(select.size) > 1 || event.button !== 0) return;
+    event.preventDefault();
+    if (openSelect === select) {
+      closeMenu();
+      return;
+    }
+    openMenu(select);
+  }, true);
+
+  document.addEventListener('keydown', event => {
+    const select = event.target instanceof Element ? event.target.closest('select') : null;
+    const canOpen = select && !select.disabled && !select.multiple && Number(select.size) <= 1;
+    if (!menu && canOpen && (event.key === 'Enter' || event.key === ' ' || event.key === 'F4' || (event.altKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp')))) {
+      event.preventDefault();
+      openMenu(select);
+      return;
+    }
+    if (!menu) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      const selectToFocus = openSelect;
+      closeMenu();
+      selectToFocus?.focus({ preventScroll: true });
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const items = choices();
+      for (let step = 1; step <= items.length; step += 1) {
+        const next = (activeIndex + step) % items.length;
+        if (!items[next].disabled) { activeIndex = next; break; }
+      }
+      paintActive();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const items = choices();
+      for (let step = 1; step <= items.length; step += 1) {
+        const next = (activeIndex - step + items.length) % items.length;
+        if (!items[next].disabled) { activeIndex = next; break; }
+      }
+      paintActive();
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      choose(activeIndex);
+    } else if (event.key === 'Tab') {
+      closeMenu();
+    }
+  }, true);
+
+  window.addEventListener('scroll', event => {
+    if (menu && event.target instanceof Node && (event.target === menu || menu.contains(event.target))) return;
+    closeMenu();
+  }, true);
+  window.addEventListener('resize', closeMenu);
+}

@@ -115,7 +115,7 @@ final class UploadReader
             }
             $book = self::xml($zip, 'xl/workbook.xml'); $tabs = []; $totalCells = 0;
             foreach ($book->query('//m:sheets/m:sheet') as $sheet) {
-                if (count($tabs) >= 20) throw new InvalidArgumentException('Upload at most 20 tabs per workbook.');
+                if (count($tabs) >= 50) throw new InvalidArgumentException('Upload at most 50 tabs per workbook.');
                 $relationship = $sheet->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
                 if (!isset($targets[$relationship])) throw new InvalidArgumentException('Unsupported workbook tab relationship.');
                 $xml = self::xml($zip, $targets[$relationship]); $rows = [];

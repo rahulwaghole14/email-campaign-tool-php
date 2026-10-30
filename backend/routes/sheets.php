@@ -48,21 +48,16 @@ try {
         respond(['title' => $data['title'], 'headers' => $data['headers'], 'sample' => array_slice($data['values'], 0, 3)]);
     }
     if ($path === '/api/sheets' && $method === 'POST') respond(['id' => $sheets->save($input)], 201);
-    if (preg_match('#^/api/sheets/(\d+)(?:/(edit|queue|send|batch-send|mapping))?$#', $path, $matches)) {
+    if (preg_match('#^/api/sheets/(\d+)(?:/(edit|queue|send|batch-send|mapping|reset-processing))?$#', $path, $matches)) {
         $sourceId = (int) $matches[1]; $action = $matches[2] ?? '';
         if ($method === 'DELETE') { $sheets->delete($sourceId); respond(['ok' => true]); }
         if ($method === 'GET' && $action === '') respond($sheets->preview($sourceId));
         if ($method === 'POST' && $action === 'edit') { $sheets->edit($sourceId, $input); respond(['ok' => true]); }
-        if ($method === 'POST' && ($action === 'send' || $action === 'batch-send' || $action === 'queue')) {
-            $sessionUser = getSessionUser();
-            if (!empty($sessionUser) && ($sessionUser['role'] ?? '') === 'member' && !empty($sessionUser['assigned_account_id'])) {
-                $input['mail_account_id'] = (int) $sessionUser['assigned_account_id'];
-            }
-        }
         if ($method === 'POST' && $action === 'queue') respond(['id' => $sheets->enqueue($sourceId, $input)]);
         if ($method === 'POST' && $action === 'send') respond($sheets->send($sourceId, $input));
         if ($method === 'POST' && $action === 'batch-send') respond($sheets->batchSend($sourceId, $input));
         if ($method === 'POST' && $action === 'mapping') respond(['id' => $sheets->save($input, $sourceId)]);
+        if ($method === 'POST' && $action === 'reset-processing') respond(['recovered' => $sheets->resetProcessing($sourceId)]);
     }
     respond(['error' => 'Endpoint not found.'], 404);
 } catch (PDOException $e) {

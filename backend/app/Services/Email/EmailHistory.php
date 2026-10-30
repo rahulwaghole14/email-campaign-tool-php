@@ -20,32 +20,53 @@ final class EmailHistory
         if (!in_array($status, ['', 'pending','processing','sent','failed','dry_run'], true)) throw new InvalidArgumentException('Invalid status filter.');
         $conditions = []; $params = [];
         if ($search !== '') {
-            $conditions[] = "(recipient LIKE ? ESCAPE '!' OR subject LIKE ? ESCAPE '!')";
+            $conditions[] = "(e.recipient LIKE ? ESCAPE '!' OR e.subject LIKE ? ESCAPE '!')";
             $pattern = '%' . str_replace(['!','%','_'], ['!!','!%','!_'], $search) . '%';
             $params = [$pattern,$pattern];
         }
-        if ($status !== '') { $conditions[] = 'status = ?'; $params[] = $status; }
+        if ($status !== '') { $conditions[] = 'e.status = ?'; $params[] = $status; }
         if (isset($input['mail_account_id']) && $input['mail_account_id'] !== '') {
-            $conditions[] = 'mail_account_id = ?';
+            $conditions[] = 'e.mail_account_id = ?';
             $params[] = (int) $input['mail_account_id'];
         }
+        $from = trim((string) ($input['from'] ?? ''));
+        if ($from !== '') {
+            $start = date_create_immutable($from);
+            if (!$start) throw new InvalidArgumentException('Invalid date filter.');
+            $conditions[] = 'e.created_at >= ?';
+            $params[] = $start->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:sP');
+        }
         $where = $conditions ? ' WHERE ' . implode(' AND ', $conditions) : '';
-        $count = $this->db->prepare('SELECT COUNT(*) FROM emails' . $where); $count->execute($params);
+        $count = $this->db->prepare('SELECT COUNT(*) FROM emails e' . $where); $count->execute($params);
         $total = (int) $count->fetchColumn(); $pages = max(1, (int) ceil($total / $size)); $page = min($page, $pages);
         $offset = ($page - 1) * $size;
-        $query = $this->db->prepare('SELECT id, recipient, subject, status, attempts, error, created_at FROM emails' . $where . ' ORDER BY id DESC LIMIT ' . $size . ' OFFSET ' . $offset);
+        $query = $this->db->prepare('
+            SELECT e.id, e.mail_account_id, e.recipient, e.subject, e.status, e.attempts, e.error, e.created_at,
+                   SUBSTR(e.body, 1, 180) AS snippet,
+                   m.name as sender_name, m.email as sender_email
+            FROM emails e
+            LEFT JOIN mail_accounts m ON e.mail_account_id = m.id' .
+            $where . ' ORDER BY e.id DESC LIMIT ' . $size . ' OFFSET ' . $offset
+        );
         $query->execute($params);
         $emails = $query->fetchAll();
         $threadCounts = ConversationThread::getThreadCountsForEmails($this->db, $emails);
         foreach ($emails as &$em) {
             $em['thread_count'] = $threadCounts[(int) $em['id']] ?? 1;
+            $em['snippet'] = trim((string) preg_replace('/\s+/u', ' ', (string) ($em['snippet'] ?? '')));
         }
         return ['emails'=>$emails, 'pagination'=>['page'=>$page,'page_size'=>$size,'pages'=>$pages,'total'=>$total,'from'=>$total ? $offset + 1 : 0,'to'=>min($offset + $size,$total)]];
     }
 
     public function detail(int $id): ?array
     {
-        $query = $this->db->prepare('SELECT id, recipient, cc, bcc, subject, body, attachments, status, attempts, error, message_id, created_at, updated_at FROM emails WHERE id = ?');
+        $query = $this->db->prepare('
+            SELECT e.id, e.mail_account_id, e.recipient, e.cc, e.bcc, e.subject, e.body, e.attachments, e.status, e.attempts, e.error, e.message_id, e.created_at, e.updated_at,
+                   m.name as sender_name, m.email as sender_email
+            FROM emails e
+            LEFT JOIN mail_accounts m ON e.mail_account_id = m.id
+            WHERE e.id = ?
+        ');
         $query->execute([$id]); $email = $query->fetch();
         if (!$email) return null;
         if (!empty($email['attachments'])) {

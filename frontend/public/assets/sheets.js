@@ -1,7 +1,15 @@
 (() => {
+  const earlySheet = document.getElementById('early-sheet-style');
+  if (earlySheet) {
+    const dir = document.getElementById('sheets-directory');
+    const preview = document.getElementById('sheet-preview');
+    if (dir) dir.hidden = true;
+    if (preview) preview.hidden = false;
+    earlySheet.remove();
+  }
   const fields = {id:'Record ID',name:'Agency / recipient name',email:'Email',subject:'Email subject',body:'Email content',link:'Drive link',cc:'CC',bcc:'BCC',enabled:'Send Enabled'};
   const aliases = {id:['id','record_id'], name:['agency name','recipient_name'],email:['email','recipient_email'],subject:['email subject','subject'],body:['email content','message'],link:['drive_link','drive link'],cc:['cc'],bcc:['bcc'],enabled:['send enabled','send_enabled']};
-  let inspectedUrl = '', source = null, records = [], page = 0, editing = null, mappingId = null, savedMapping = null, openedId = null;
+  let inspectedUrl = '', source = null, records = [], page = 0, editing = null, mappingId = null, savedMapping = null, openedId = null, sheetFilter = '';
   let uploadId = null;
   let uploadLimit = 5 * 1024 * 1024;
   let allSources = [];
@@ -10,7 +18,18 @@
   const sourceInput = () => uploadId ? {upload_id:uploadId} : {url:inspectedUrl};
   const post = (path, data = {}) => api(path, {method:'POST',body:JSON.stringify(data)});
   const element = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
-  const isRowValid = row => !row.issues?.length && row.send_status !== 'sent' && (!('enabled' in row.values) || row.values.enabled.trim().toUpperCase() === 'YES');
+  const isRowValid = row => !row.issues?.length && row.send_status !== 'sent' && row.send_status !== 'processing' && (!('enabled' in row.values) || row.values.enabled.trim().toUpperCase() === 'YES');
+  const rowMatchesFilter = (row, filter) => {
+    if (!filter) return true;
+    if (filter === 'issues') return row.issues.length > 0;
+    if (filter === 'ready') return isRowValid(row);
+    return row.send_status === filter;
+  };
+  const syncPill = (label) => {
+    const pill = $('#sheet-sync-status');
+    if (!pill) return;
+    pill.innerHTML = `<svg viewBox="0 0 24 24" class="icon" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>${label}`;
+  };
 
   function escapeHtml(str) {
     const div = document.createElement('div');
@@ -49,7 +68,7 @@
               ${badgeHtml}
             </div>
             <div class="sheet-source-meta">
-              <span>Tab: <strong>${item.sheet_id === 0 ? 'First tab' : (String(item.sheet_id).length > 5 ? 'Tab ID: ' + item.sheet_id : 'Tab #' + item.sheet_id)}</strong></span>
+              <span>Tab: <strong>${escapeHtml(item.tab_title || (item.sheet_id === 0 ? 'First tab' : (String(item.sheet_id).length > 5 ? 'Tab ID: ' + item.sheet_id : 'Tab #' + item.sheet_id)))}</strong></span>
               <span class="meta-dot">·</span>
               <span>Header row: <strong>${item.header_row}</strong></span>
             </div>
@@ -101,6 +120,11 @@
         statusPill.hidden = !status.connected;
         statusPill.style.display = status.connected ? 'inline-flex' : 'none';
       }
+      const disconnectBtn = $('#google-disconnect');
+      if (disconnectBtn) {
+        disconnectBtn.hidden = !status.connected;
+        disconnectBtn.style.display = status.connected ? 'inline-flex' : 'none';
+      }
 
       const connectBtn = $('#google-connect');
       if (connectBtn) {
@@ -114,7 +138,24 @@
 
       renderSourcesList(allSources, status.connected);
 
-      if (!openedId) { $('#sheets-directory').hidden = false; $('#sheet-preview').hidden = true; }
+      const routeRaw = (location.hash || '').replace(/^#/, '');
+      const routeBits = routeRaw.split('/');
+      const routeId = routeBits[0] === 'sheets' ? (routeBits[1] || '') : (localStorage.getItem('rsl_open_sheet') || '');
+      const savedSource = routeId ? allSources.find(item => String(item.id) === String(routeId)) : null;
+      if (savedSource && Number(openedId) !== Number(savedSource.id)) {
+        try {
+          await openSource(savedSource.id);
+        } catch (err) {
+          localStorage.removeItem('rsl_open_sheet');
+          openedId = null;
+          $('#sheets-directory').hidden = false;
+          $('#sheet-preview').hidden = true;
+          throw err;
+        }
+      } else if (!openedId) {
+        $('#sheets-directory').hidden = false;
+        $('#sheet-preview').hidden = true;
+      }
       if (!status.connected) { if (!isUpload(source)) { $('#sheet-preview').hidden = true; $('#sheets-directory').hidden = false; } if (!uploadId) $('#sheet-map-form').hidden = true; }
     } catch(e) {notice(e.message,true);}
   };
@@ -358,6 +399,7 @@
         bulkBtn.hidden = true;
       }
     }
+    rememberSheetChrome();
   }
 
   async function openSource(id, preserveSelections = false) {
@@ -369,14 +411,22 @@
     const data = await api(`sheets/${id}`);
     if (openedId !== Number(id)) return;
     source = data.source; records = data.records;
-    if (!sameSource) { page = 0; $('#sheet-search').value = ''; $('#sheet-status').value = ''; }
-    $('#source-title').textContent = `${source.title} / ${data.tab.title}`;
-    $('#source-summary').textContent = `${records.length} records · Header row ${source.header_row}`;
+    if (!sameSource) { page = 0; sheetFilter = ''; $('#sheet-search').value = ''; $('#sheet-status').value = ''; }
+    const tabTitle = data.tab?.title || 'Sheet';
+    $('#source-title').textContent = tabTitle;
+    const fileName = source.title && source.title !== tabTitle ? source.title : '';
+    $('#source-summary').textContent = [fileName, `${records.length} records`, `Header row ${source.header_row}`].filter(Boolean).join(' · ');
+    syncPill(isUpload(source) ? 'Uploaded file' : 'Live Sync Active');
     $('#open-sheet').href = `https://docs.google.com/spreadsheets/d/${source.spreadsheet_id}/edit#gid=${source.sheet_id}`;
     $('#open-sheet').hidden = isUpload(source);
     $('#source-edit-note').textContent = isUpload(source) ? 'Edits save to the uploaded copy in this application. Your original file and existing queued emails stay unchanged.' : 'Edits save to Google Sheets. Already queued or sent emails keep their original content.';
     $('#sheets-directory').hidden = true;
     $('#sheet-preview').hidden = false;
+    try {
+      localStorage.setItem('rsl_open_sheet', String(id));
+      const nextHash = '#sheets/' + id;
+      if (location.hash !== nextHash) history.replaceState(null, '', nextHash);
+    } catch (e) {}
     window.scrollTo({top: 0, behavior: 'smooth'});
     renderRows();
     updateBatchBar();
@@ -388,18 +438,18 @@
     source = null;
     openedId = null;
     selectedIds.clear();
+    try {
+      localStorage.removeItem('rsl_open_sheet');
+      if ((location.hash || '').startsWith('#sheets/')) history.replaceState(null, '', '#sheets');
+    } catch (e) {}
     window.scrollTo({top: 0, behavior: 'smooth'});
   });
 
   function renderRows() {
-    const size = Number($('#sheet-size').value), term = $('#sheet-search').value.trim().toLowerCase(), filter = $('#sheet-status').value;
+    const size = Number($('#sheet-size').value), term = $('#sheet-search').value.trim().toLowerCase(), filter = sheetFilter;
     const filtered = records.filter(row => {
       const matchesTerm = [row.record_id,row.values.name,row.values.email,row.values.subject].some(value => String(value || '').toLowerCase().includes(term));
-      if (!matchesTerm) return false;
-      if (!filter) return true;
-      if (filter === 'issues') return row.issues.length > 0;
-      if (filter === 'ready') return isRowValid(row);
-      return row.send_status === filter;
+      return matchesTerm && rowMatchesFilter(row, filter);
     });
 
     const pages = Math.max(1,Math.ceil(filtered.length / size)); page = Math.max(0,Math.min(page,pages - 1));
@@ -417,6 +467,10 @@
     if (cReady) cReady.textContent = readyCount;
     if (cSent) cSent.textContent = sentCount;
     if (cIssues) cIssues.textContent = issuesCount;
+
+    const hasStuckProcessing = records.some(r => r.send_status === 'processing');
+    const resetBtn = $('#reset-processing-btn');
+    if (resetBtn) resetBtn.hidden = !hasStuckProcessing;
 
     document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.tabFilter || '') === filter);
@@ -462,14 +516,14 @@
       // Status badges
       const status = element('td', undefined, 'cell-status');
       const statusWrap = element('div', undefined, 'cell-status-wrap');
-      const statusBadge = element('span', row.send_status.replaceAll('_',' '), `badge ${row.send_status}`);
-      statusWrap.append(statusBadge);
       if (row.issues.length) {
         for (const issue of row.issues) {
           statusWrap.append(element('span', issue, 'badge issue'));
         }
       } else if (row.send_status === 'not_queued') {
         statusWrap.append(element('span', 'Ready', 'badge ready'));
+      } else {
+        statusWrap.append(element('span', row.send_status.replaceAll('_',' '), `badge ${row.send_status}`));
       }
       status.append(statusWrap);
 
@@ -521,19 +575,33 @@
     $('#sheet-page').textContent = `Page ${page + 1} of ${pages}`;
     $('#sheet-range').textContent = `${filtered.length ? page * size + 1 : 0}–${Math.min((page + 1) * size,filtered.length)} of ${filtered.length} records`;
     $('#sheet-prev').disabled = page === 0; $('#sheet-next').disabled = page + 1 >= pages;
+    rememberSheetChrome();
+  }
+
+  function rememberSheetChrome() {
+    if (!openedId || !records.length) return;
+    try {
+      sessionStorage.setItem('rsl_sheet_counts_' + openedId, JSON.stringify({
+        all: $('#count-all-records')?.textContent || '',
+        ready: $('#count-ready-records')?.textContent || '',
+        sent: $('#count-sent-records')?.textContent || '',
+        issues: $('#count-issues-records')?.textContent || '',
+        title: $('#source-title')?.textContent || '',
+        summary: $('#source-summary')?.textContent || '',
+        note: $('#source-edit-note')?.textContent || '',
+        bulk: $('#sheet-bulk-send-label')?.textContent || '',
+        range: $('#sheet-range')?.textContent || ''
+      }));
+    } catch (e) {}
   }
 
   // Select all checkbox handler
   $('#sheet-select-all')?.addEventListener('change', event => {
     const checked = event.target.checked;
-    const size = Number($('#sheet-size').value), term = $('#sheet-search').value.trim().toLowerCase(), filter = $('#sheet-status').value;
+    const size = Number($('#sheet-size').value), term = $('#sheet-search').value.trim().toLowerCase(), filter = sheetFilter;
     const filtered = records.filter(row => {
       const matchesTerm = [row.record_id,row.values.name,row.values.email,row.values.subject].some(value => String(value || '').toLowerCase().includes(term));
-      if (!matchesTerm) return false;
-      if (!filter) return true;
-      if (filter === 'issues') return row.issues.length > 0;
-      if (filter === 'ready') return isRowValid(row);
-      return row.send_status === filter;
+      return matchesTerm && rowMatchesFilter(row, filter);
     });
     const pageRecords = filtered.slice(page * size, (page + 1) * size);
     for (const r of pageRecords) {
@@ -574,14 +642,32 @@
       const cancelBtn = $('#send-confirm-cancel-btn');
 
       if (!dialog || typeof dialog.showModal !== 'function') {
-        resolve(confirm(desc || 'Send email now via Hostinger SMTP?'));
+        resolve(confirm(desc || 'Send email now via configured SMTP?'));
         return;
       }
 
       if (titleEl) titleEl.textContent = title || 'Confirm Email Dispatch';
-      if (descEl) descEl.textContent = desc || 'Ready to send via Hostinger SMTP.';
+      if (descEl) descEl.textContent = desc || 'Ready to send via configured SMTP.';
 
       const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
+      const confirmSelect = $('#send-confirm-sender-select');
+      if (confirmSelect) {
+        if (!confirmSelect.options || confirmSelect.options.length === 0) {
+          const accounts = (window.currentMailAccounts && window.currentMailAccounts.length > 0)
+            ? window.currentMailAccounts
+            : (activeSender ? [activeSender] : [{ id: 1, name: 'RSL Communications', email: 'ray@rslsolution.com' }]);
+          confirmSelect.replaceChildren();
+          for (const acc of accounts) {
+            const opt = document.createElement('option');
+            opt.value = acc.id;
+            opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+            confirmSelect.append(opt);
+          }
+        }
+        if (activeSender && activeSender.id) {
+          confirmSelect.value = String(activeSender.id);
+        }
+      }
       const fromEl = $('#send-confirm-from');
       if (fromEl) {
         fromEl.textContent = activeSender ? (activeSender.name ? `${activeSender.name} <${activeSender.email}>` : activeSender.email) : 'ray@rslsolution.com';
@@ -661,8 +747,8 @@
     const confirmed = await confirmSendDialog({
       title: isSingle ? 'Send 1 Email via SMTP' : `Send ${total} Emails via SMTP`,
       desc: isSingle
-        ? 'Send this email now directly to the recipient via Hostinger SMTP.'
-        : `Ready to dispatch ${total} verified emails directly via persistent Hostinger SMTP connection.`,
+        ? 'Send this email now directly to the recipient via configured SMTP.'
+        : `Ready to dispatch ${total} verified emails directly via persistent SMTP connection.`,
       count: total,
       recipient: isSingle ? (targetRow?.values?.email || '1 recipient') : `${total} ready recipients`,
       subject: isSingle ? (targetRow?.values?.subject || 'From sheet template') : `Batch dispatch of ${total} records`
@@ -689,8 +775,8 @@
     batchCancelRequested = false;
 
     if (titleEl) titleEl.textContent = `Dispatching ${total} email${total === 1 ? '' : 's'}…`;
-    if (subtitleEl) subtitleEl.textContent = 'Live Hostinger SMTP dispatch in progress. Please keep this tab open.';
-    if (badgeEl) badgeEl.textContent = 'Dispatched live via Hostinger SMTP';
+    if (subtitleEl) subtitleEl.textContent = 'Live SMTP dispatch in progress. Please keep this tab open.';
+    if (badgeEl) badgeEl.textContent = 'Dispatched live via SMTP';
     if (counterText) counterText.textContent = `0 / ${total} sent`;
     if (counterPercent) counterPercent.textContent = '0%';
     if (progressBar) progressBar.style.width = '0%';
@@ -803,8 +889,8 @@
 
   document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const tabFilter = btn.dataset.tabFilter || '';
-      $('#sheet-status').value = tabFilter;
+      sheetFilter = btn.dataset.tabFilter || '';
+      $('#sheet-status').value = '';
       page = 0;
       renderRows();
     });
@@ -815,10 +901,17 @@
 
   for (const [selector,event] of [['#sheet-search','input'],['#sheet-status','change'],['#sheet-size','change']]) $(selector).addEventListener(event, () => {
     if (selector === '#sheet-size') localStorage.setItem('rsl_sheet_size', $('#sheet-size').value);
+    if (selector === '#sheet-status') sheetFilter = $('#sheet-status').value;
     page = 0; renderRows();
   });
   $('#sheet-prev').addEventListener('click', () => {page--;renderRows();}); $('#sheet-next').addEventListener('click', () => {page++;renderRows();});
   $('#refresh-sheet').addEventListener('click', event => busy(event.currentTarget, () => openSource(source.id, true)));
+  $('#reset-processing-btn')?.addEventListener('click', event => busy(event.currentTarget, async () => {
+    if (!source || !source.id) return;
+    const res = await post(`sheets/${source.id}/reset-processing`);
+    await openSource(source.id, true);
+    notice(res.recovered > 0 ? `Reset ${res.recovered} email(s) from processing back to ready.` : 'All processing emails have been unlocked.');
+  }));
 
   $('#source-mapping').addEventListener('click', event => busy(event.currentTarget, async () => {
     mappingId = source.id; savedMapping = source.mapping;
@@ -830,16 +923,28 @@
 
   function editRow(row) {
     editing = {row,sourceId:source.id,uploaded:isUpload(source)}; $('#edit-fields').replaceChildren(); $('#edit-error').hidden = true;
+    const where = isUpload(source) ? 'the uploaded copy' : 'the sheet';
     $('#edit-save-note').textContent = isUpload(source) ? 'Changes save to your uploaded copy in this application.' : 'Changes save to the original Google Sheet.';
+    const locked = row.send_status === 'sent' || row.send_status === 'dry_run' || row.send_status === 'pending' || row.send_status === 'processing';
+    const recordNote = $('#edit-record-note');
+    recordNote.classList.toggle('is-locked', locked);
+    if (row.send_status === 'sent' || row.send_status === 'dry_run') recordNote.textContent = `This email was already sent. Saving updates ${where} only. The recipient keeps the original message.`;
+    else if (row.send_status === 'pending' || row.send_status === 'processing') recordNote.textContent = `This email is already queued. Saving updates ${where} only. The queued message stays as it was.`;
+    else recordNote.textContent = 'Only changed fields are saved. Keep this sheet free of simultaneous edits while saving.';
     $('#edit-record-id').textContent = `Record ${row.record_id} · Row ${row.row}`;
     for (const [key,value] of Object.entries(row.values)) {
       if (key === 'id') continue;
       const label = element('label',fields[key]); const input = element(key === 'body' ? 'textarea' : 'input');
       input.name = key; input.value = value; input.disabled = row.formulas.includes(key);
-      if (key === 'body') input.rows = 5;
+      if (key === 'body') input.addEventListener('input', () => fitEditorBody(input));
       label.append(input); if (input.disabled) label.append(element('small','Formula: edit in the original spreadsheet.')); $('#edit-fields').append(label);
     }
     $('#sheet-editor').showModal();
+    $('#edit-fields').querySelectorAll('textarea').forEach(fitEditorBody);
+  }
+  function fitEditorBody(input) {
+    input.style.height = 'auto';
+    input.style.height = `${Math.max(input.scrollHeight, 140)}px`;
   }
   $('#close-editor').addEventListener('click', () => $('#sheet-editor').close());
 
@@ -876,12 +981,9 @@
       if (openedId !== Number(source.id)) return;
       records = data.records; source = data.source;
       renderRows();
-      const statusPill = $('#sheet-sync-status');
-      if (statusPill) {
-        statusPill.innerHTML = `<svg viewBox="0 0 24 24" class="icon" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Synced with Google`;
-        setTimeout(() => {
-          if (statusPill) statusPill.innerHTML = `<svg viewBox="0 0 24 24" class="icon" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Live Sync Active`;
-        }, 3000);
+      if (!isUpload(source)) {
+        syncPill('Synced with Google');
+        setTimeout(() => { if (!isUpload(source)) syncPill('Live Sync Active'); }, 3000);
       }
     } catch (_) {}
     finally { isSilentlySyncing = false; }

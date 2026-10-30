@@ -26,41 +26,11 @@ final class MailAccountService
     }
 
     /**
-     * Get accessible accounts for a given user session/role.
-     * Admins get all active accounts. Members get their assigned account.
+     * Get all active accounts available for sending and receiving.
      */
     public static function getForUser(PDO $db, array $user, bool $includeSecrets = false): array
     {
-        $role = $user['role'] ?? 'member';
-        if ($role === 'admin') {
-            return self::getAll($db, $includeSecrets);
-        }
-
-        $assignedId = (int) ($user['assigned_account_id'] ?? 0);
-        if ($assignedId > 0) {
-            $stmt = $db->prepare("SELECT * FROM mail_accounts WHERE id = ? AND status = 'active'");
-            $stmt->execute([$assignedId]);
-            $acct = $stmt->fetch(PDO::FETCH_ASSOC);
-            if ($acct) {
-                if (!$includeSecrets) unset($acct['smtp_pass'], $acct['imap_pass']);
-                return [$acct];
-            }
-        }
-
-        // For members, do not fallback to admin's default mailbox
-        if ($role === 'member') {
-            return [];
-        }
-
-        // Fallback to default active account if no assigned account
-        $stmt = $db->query("SELECT * FROM mail_accounts WHERE is_default = 1 AND status = 'active' LIMIT 1");
-        $default = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($default) {
-            if (!$includeSecrets) unset($default['smtp_pass'], $default['imap_pass']);
-            return [$default];
-        }
-
-        return [];
+        return self::getAll($db, $includeSecrets);
     }
 
     /**
@@ -83,7 +53,7 @@ final class MailAccountService
      */
     public static function getDefault(PDO $db): array
     {
-        $stmt = $db->query("SELECT * FROM mail_accounts WHERE is_default = 1 LIMIT 1");
+        $stmt = $db->query("SELECT * FROM mail_accounts WHERE status = 'active' ORDER BY id ASC LIMIT 1");
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row) return $row;
 
@@ -183,9 +153,6 @@ final class MailAccountService
     {
         $existing = self::getById($db, $id, false);
         if (!$existing) throw new RuntimeException('Mail account not found.');
-        if ((int) $existing['is_default'] === 1) {
-            throw new RuntimeException('Cannot delete the default mail account. Set another account as default first.');
-        }
         $db->prepare("DELETE FROM mail_accounts WHERE id = ?")->execute([$id]);
     }
 

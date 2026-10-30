@@ -201,15 +201,87 @@ final class ImapClient
         ]);
     }
 
+    public static function isBounceEmail(?string $fromName, ?string $fromEmail, ?string $subject): bool
+    {
+        $fName = strtolower((string) $fromName);
+        $fEmail = strtolower((string) $fromEmail);
+        $subj = strtolower((string) $subject);
+        return str_contains($fEmail, 'mailer-daemon')
+            || str_contains($fEmail, 'postmaster')
+            || str_contains($fName, 'mail delivery')
+            || str_contains($subj, 'undelivered')
+            || str_contains($subj, 'delivery failed')
+            || str_contains($subj, 'failure notice')
+            || str_contains($subj, 'returned to sender');
+    }
+
+    /**
+     * Replace a stored MIME boundary stub with the delivery notice from the HTML part.
+     *
+     * @param array<int, array<string, mixed>> $emails
+     */
+    private function repairStubBodies(array &$emails): void
+    {
+        $stubIds = [];
+        foreach ($emails as $em) {
+            if (self::isMimeStub((string) ($em['body'] ?? '')) || self::isMimeStub((string) ($em['snippet'] ?? ''))) {
+                $stubIds[] = (int) $em['id'];
+            }
+        }
+        if ($stubIds === []) {
+            return;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($stubIds), '?'));
+        $htmlStmt = $this->db->prepare("SELECT id, html_body FROM inbox_emails WHERE id IN ({$placeholders})");
+        $htmlStmt->execute($stubIds);
+        $htmlById = [];
+        foreach ($htmlStmt->fetchAll() as $row) {
+            $htmlById[(int) $row['id']] = (string) ($row['html_body'] ?? '');
+        }
+
+        foreach ($emails as &$em) {
+            $id = (int) $em['id'];
+            $html = $htmlById[$id] ?? '';
+            if ($html === '') {
+                continue;
+            }
+            $plain = self::plainFromHtml($html);
+            if ($plain === '' || self::isMimeStub($plain)) {
+                continue;
+            }
+            $em['body'] = $plain;
+            $em['snippet'] = self::cleanSnippet($plain, 140);
+            try {
+                $this->db->prepare("UPDATE inbox_emails SET body = ?, snippet = ? WHERE id = ?")
+                    ->execute([$plain, $em['snippet'], $id]);
+            } catch (\Throwable $t) {
+            }
+        }
+        unset($em);
+    }
+
     public function listing(array $query = []): array
     {
         $page = max(1, (int) ($query['page'] ?? 1));
         $size = max(5, min(100, (int) ($query['page_size'] ?? 25)));
         $search = trim((string) ($query['search'] ?? ''));
         $status = trim((string) ($query['status'] ?? ''));
+        $category = trim((string) ($query['category'] ?? 'primary'));
+        if (!in_array($category, ['primary', 'bounces', 'all'], true)) {
+            $category = 'primary';
+        }
 
         $conditions = [];
         $params = [];
+
+        $bounceSql = "(LOWER(from_email) LIKE '%mailer-daemon%' OR LOWER(from_email) LIKE '%postmaster%' OR LOWER(from_name) LIKE '%mail delivery%' OR LOWER(subject) LIKE '%undelivered%' OR LOWER(subject) LIKE '%delivery failed%' OR LOWER(subject) LIKE '%failure notice%' OR LOWER(subject) LIKE '%returned to sender%')";
+
+        if ($category === 'primary') {
+            $conditions[] = "NOT {$bounceSql}";
+        } elseif ($category === 'bounces') {
+            $conditions[] = $bounceSql;
+        }
 
         if ($search !== '') {
             $conditions[] = "(from_name LIKE ? OR from_email LIKE ? OR subject LIKE ? OR snippet LIKE ?)";
@@ -226,6 +298,16 @@ final class ImapClient
             $conditions[] = "is_read = 1";
         }
 
+        $from = trim((string) ($query['from'] ?? ''));
+        if ($from !== '') {
+            $start = date_create_immutable($from);
+            if (!$start) {
+                throw new \InvalidArgumentException('Invalid date filter.');
+            }
+            $conditions[] = 'received_at >= ?';
+            $params[] = $start->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('Y-m-d\TH:i:sP');
+        }
+
         $accountId = !empty($query['account_id']) ? (int) $query['account_id'] : null;
         $toEmail = !empty($query['to_email']) ? trim((string) $query['to_email']) : null;
         if ($accountId !== null && $accountId > 0 && $toEmail !== null && $toEmail !== '') {
@@ -240,6 +322,35 @@ final class ImapClient
             $params[] = strtolower($toEmail);
         }
 
+        // Base mailbox scoping conditions for category totals
+        $baseConditions = [];
+        $baseParams = [];
+        if ($accountId !== null && $accountId > 0 && $toEmail !== null && $toEmail !== '') {
+            $baseConditions[] = "(mail_account_id = ? OR LOWER(to_email) = ?)";
+            $baseParams[] = $accountId;
+            $baseParams[] = strtolower($toEmail);
+        } elseif ($accountId !== null && $accountId > 0) {
+            $baseConditions[] = "mail_account_id = ?";
+            $baseParams[] = $accountId;
+        } elseif ($toEmail !== null && $toEmail !== '') {
+            $baseConditions[] = "LOWER(to_email) = ?";
+            $baseParams[] = strtolower($toEmail);
+        }
+
+        $baseWhere = $baseConditions ? 'WHERE ' . implode(' AND ', $baseConditions) : '';
+        $baseAnd = $baseConditions ? ' AND ' . implode(' AND ', $baseConditions) : '';
+
+        // Category counts
+        $stmtAll = $this->db->prepare("SELECT COUNT(*) FROM inbox_emails {$baseWhere}");
+        $stmtAll->execute($baseParams);
+        $totalAll = (int) $stmtAll->fetchColumn();
+
+        $stmtBounces = $this->db->prepare("SELECT COUNT(*) FROM inbox_emails WHERE {$bounceSql} {$baseAnd}");
+        $stmtBounces->execute($baseParams);
+        $totalBounces = (int) $stmtBounces->fetchColumn();
+
+        $totalPrimary = max(0, $totalAll - $totalBounces);
+
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
         $countStmt = $this->db->prepare("SELECT COUNT(*) FROM inbox_emails {$where}");
@@ -249,6 +360,11 @@ final class ImapClient
         // Calculate unread count strictly within the scoped mailbox criteria
         $unreadConditions = ["is_read = 0"];
         $unreadParams = [];
+        if ($category === 'primary') {
+            $unreadConditions[] = "NOT {$bounceSql}";
+        } elseif ($category === 'bounces') {
+            $unreadConditions[] = $bounceSql;
+        }
         if ($accountId !== null && $accountId > 0 && $toEmail !== null && $toEmail !== '') {
             $unreadConditions[] = "(mail_account_id = ? OR LOWER(to_email) = ?)";
             $unreadParams[] = $accountId;
@@ -269,10 +385,17 @@ final class ImapClient
         $page = min($page, $pages);
         $offset = ($page - 1) * $size;
 
-        $selectSql = "SELECT id, mail_account_id, uid, message_id, from_name, from_email, to_email, subject, body, snippet, is_read, received_at, created_at FROM inbox_emails {$where} ORDER BY received_at DESC, id DESC LIMIT {$size} OFFSET {$offset}";
+        $selectSql = "SELECT i.id, i.mail_account_id, i.uid, i.message_id, i.from_name, i.from_email, i.to_email, i.subject, i.body, i.snippet, i.is_read, i.received_at, i.created_at,
+                             m.name AS mailbox_name, m.email AS mailbox_email
+                      FROM inbox_emails i
+                      LEFT JOIN mail_accounts m ON i.mail_account_id = m.id
+                      {$where}
+                      ORDER BY i.received_at DESC, i.id DESC
+                      LIMIT {$size} OFFSET {$offset}";
         $stmt = $this->db->prepare($selectSql);
         $stmt->execute($params);
         $emails = $stmt->fetchAll();
+        $this->repairStubBodies($emails);
 
         // Ensure snippets don't show raw MIME headers, boundary markers, or CSS rules
         foreach ($emails as &$em) {
@@ -294,11 +417,19 @@ final class ImapClient
         $threadCounts = ConversationThread::getThreadCountsForInbox($this->db, $emails);
         foreach ($emails as &$em) {
             $em['thread_count'] = $threadCounts[(int) $em['id']] ?? 1;
+            $em['is_bounce'] = self::isBounceEmail($em['from_name'] ?? '', $em['from_email'] ?? '', $em['subject'] ?? '');
         }
 
         return [
             'emails' => $emails,
             'unread_count' => $unreadCount,
+            'global_unread_count' => (int) ($this->db->query("SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0")->fetchColumn() ?: 0),
+            'category' => $category,
+            'category_counts' => [
+                'primary' => $totalPrimary,
+                'bounces' => $totalBounces,
+                'all' => $totalAll
+            ],
             'pagination' => [
                 'page' => $page,
                 'pages' => $pages,
@@ -319,19 +450,32 @@ final class ImapClient
             return null;
         }
 
-        // Auto-fetch HTML from IMAP if missing
-        if (empty($email['html_body']) && !empty($email['uid'])) {
+        // Recover a delivery report when only the MIME wrapper was stored, and fill in HTML when it is missing.
+        if (!empty($email['uid']) && (empty($email['html_body']) || self::isMimeStub((string) ($email['body'] ?? '')))) {
             try {
                 $conn = $this->connect();
                 $this->sendCommand($conn, "SELECT INBOX");
                 $fetched = $this->fetchMessage($conn, (int) $email['uid']);
                 $this->close($conn);
-                if ($fetched && !empty($fetched['html_body'])) {
-                    $email['html_body'] = $fetched['html_body'];
-                    $email['body'] = $fetched['body'];
-                    $email['snippet'] = $fetched['snippet'];
-                    $this->db->prepare("UPDATE inbox_emails SET body = ?, html_body = ?, snippet = ? WHERE id = ?")
-                        ->execute([$email['body'], $email['html_body'], $email['snippet'], $id]);
+                if ($fetched) {
+                    $fetchedBody = trim((string) ($fetched['body'] ?? ''));
+                    $fetchedHtml = (string) ($fetched['html_body'] ?? '');
+                    $currentIsStub = self::isMimeStub((string) ($email['body'] ?? ''));
+                    $plainIsUseful = $fetchedBody !== '' && !self::isMimeStub($fetchedBody);
+                    if ($fetchedHtml !== '') {
+                        $email['html_body'] = $fetchedHtml;
+                        if ($plainIsUseful) {
+                            $email['body'] = $fetchedBody;
+                            $email['snippet'] = (string) ($fetched['snippet'] ?: self::cleanSnippet($fetchedBody, 140));
+                        }
+                        $this->db->prepare("UPDATE inbox_emails SET body = ?, html_body = ?, snippet = ? WHERE id = ?")
+                            ->execute([$email['body'], $email['html_body'], $email['snippet'], $id]);
+                    } elseif ($currentIsStub && $plainIsUseful) {
+                        $email['body'] = $fetchedBody;
+                        $email['snippet'] = (string) ($fetched['snippet'] ?: self::cleanSnippet($fetchedBody, 140));
+                        $this->db->prepare("UPDATE inbox_emails SET body = ?, snippet = ? WHERE id = ?")
+                            ->execute([$email['body'], $email['snippet'], $id]);
+                    }
                 }
             } catch (\Throwable $t) {}
         }
@@ -352,6 +496,18 @@ final class ImapClient
             if ($updated) {
                 try {
                     $this->db->prepare("UPDATE inbox_emails SET body = ?, html_body = ?, snippet = ? WHERE id = ?")->execute([$email['body'], $email['html_body'] ?? '', $email['snippet'] ?? '', $id]);
+                } catch (\Throwable $e) {}
+            }
+        }
+
+        if (self::isMimeStub((string) ($email['body'] ?? '')) && !empty($email['html_body'])) {
+            $plain = self::plainFromHtml((string) $email['html_body']);
+            if ($plain !== '') {
+                $email['body'] = $plain;
+                $email['snippet'] = self::cleanSnippet($plain, 140);
+                try {
+                    $this->db->prepare("UPDATE inbox_emails SET body = ?, snippet = ? WHERE id = ?")
+                        ->execute([$email['body'], $email['snippet'], $id]);
                 } catch (\Throwable $e) {}
             }
         }
@@ -542,6 +698,44 @@ final class ImapClient
         return mb_substr($text, 0, $limit);
     }
 
+    public static function isMimeStub(string $text): bool
+    {
+        $value = trim($text);
+        if ($value === '') {
+            return false;
+        }
+        if (preg_match('/^boundary\s*=\s*"?[A-Za-z0-9_=.\-\/]+"?$/i', $value)) {
+            return true;
+        }
+        if (preg_match('/^this is a mime-encapsulated message\.?$/i', $value)) {
+            return true;
+        }
+        return false;
+    }
+
+    public static function plainFromHtml(string $html): string
+    {
+        $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', ' ', $html) ?? $html;
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', ' ', $html) ?? $html;
+        $html = preg_replace('/<head\b[^>]*>.*?<\/head>/is', ' ', $html) ?? $html;
+        $html = preg_replace('/<a\b[^>]*href=["\']mailto:([^"\']+)["\'][^>]*>.*?<\/a>/is', '$1', $html) ?? $html;
+        $html = str_ireplace(['<br>', '<br/>', '<br />', '</p>', '</div>', '</tr>', '</li>', '</h1>', '</h2>', '</h3>'], "\n", $html);
+        $html = strip_tags($html);
+        $html = html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $html = str_replace("\xc2\xa0", ' ', $html);
+        $html = preg_replace("/[ \t]+\n/", "\n", $html) ?? $html;
+        $html = preg_replace("/[ \t]{2,}/", ' ', $html) ?? $html;
+        $html = preg_replace("/\n{3,}/", "\n\n", $html) ?? $html;
+        $html = trim($html);
+        if (preg_match('/delivery has failed|diagnostic information for administrators|recipient not found/i', $html)) {
+            $html = preg_replace('/\n*Original message headers:\s*.*$/is', '', $html) ?? $html;
+            $html = trim($html);
+        }
+        $html = preg_replace('/([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})\s*<mailto:\1>/i', '$1', $html) ?? $html;
+        $html = preg_replace('/<mailto:([^>]+)>/i', '$1', $html) ?? $html;
+        return trim($html);
+    }
+
     public static function extractMime(string $raw, string $contentType = '', string $topEncoding = ''): array
     {
         $body = str_replace(["\r\n", "\r"], "\n", $raw);
@@ -631,9 +825,20 @@ final class ImapClient
                 $isHtml = (bool) preg_match('/content-type:\s*text\/html/i', $pHeader);
                 $isPlain = (bool) preg_match('/content-type:\s*text\/plain/i', $pHeader);
 
+                // Ignore preamble or dummy wrapper notes like "This is a MIME-encapsulated message"
+                $trimmedBody = trim($pBody);
+                if ($trimmedBody === '' || self::isMimeStub($trimmedBody)) {
+                    continue;
+                }
+
                 if (!$isHtml && !$isPlain) {
                     if (str_contains($pBody, '<html') || str_contains($pBody, '<body') || str_contains($pBody, '</div>')) {
                         $isHtml = true;
+                    } elseif (preg_match('/content-type:\s*(?:message\/delivery-status|text\/rfc822-headers)/i', $pHeader)) {
+                        $isPlain = true;
+                    } elseif (empty($pHeader) && count($parts) > 1) {
+                        // Part without headers in multipart message is usually preamble, skip unless nothing else found
+                        continue;
                     } else {
                         $isPlain = true;
                     }
@@ -664,11 +869,11 @@ final class ImapClient
         }
 
         $final = $plainText;
-        if ($final === '' && $htmlText !== '') {
-            $clean = str_ireplace(['<br>', '<br/>', '<br />', '</p>', '</div>', '</tr>', '</li>'], "\n", $htmlText);
-            $clean = strip_tags($clean);
-            $clean = html_entity_decode($clean, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $final = trim(preg_replace('/\n{3,}/', "\n\n", $clean));
+        if (($final === '' || self::isMimeStub($final)) && $htmlText !== '') {
+            $fromHtml = self::plainFromHtml($htmlText);
+            if ($fromHtml !== '') {
+                $final = $fromHtml;
+            }
         }
 
         // Clean any residual MIME boundaries or headers

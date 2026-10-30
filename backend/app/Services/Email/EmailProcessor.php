@@ -9,6 +9,35 @@ final class EmailProcessor
 {
     public function __construct(private PDO $db, private ?Mailer $mailer = null) {}
 
+    /**
+     * Automatically reset stuck 'processing' emails back to 'pending'.
+     *
+     * @param PDO $db
+     * @param int $timeoutSeconds (default 300 = 5 minutes)
+     * @param bool $force (if true, reset regardless of age)
+     * @return int Number of recovered records
+     */
+    public static function recoverStuckProcessing(PDO $db, int $timeoutSeconds = 300, bool $force = false): int
+    {
+        $now = gmdate('c');
+        if ($force) {
+            $stmt = $db->prepare("UPDATE emails SET status = 'pending', updated_at = ? WHERE status = 'processing' AND attempts < 3");
+            $stmt->execute([$now]);
+        } else {
+            $cutoff = gmdate('c', time() - max(1, $timeoutSeconds));
+            $stmt = $db->prepare("UPDATE emails SET status = 'pending', updated_at = ? WHERE status = 'processing' AND updated_at < ? AND attempts < 3");
+            $stmt->execute([$now, $cutoff]);
+        }
+        $recovered = $stmt->rowCount();
+        if ($recovered > 0) {
+            try {
+                $log = $db->prepare("INSERT INTO activity (action, detail, created_at) VALUES ('processing_timeout_reset', ?, ?)");
+                $log->execute(["Reset $recovered stuck processing email(s) back to pending.", $now]);
+            } catch (\Throwable) {}
+        }
+        return $recovered;
+    }
+
     public function processOne(int $id): array
     {
         $query = $this->db->prepare('SELECT * FROM emails WHERE id = ?');
@@ -79,7 +108,18 @@ final class EmailProcessor
             $account = $firstAccountId > 0 ? \App\Services\MailAccountService::getById($this->db, $firstAccountId, true) : null;
             $mailer = new Mailer($account);
         }
-        $results = $mailer->sendBatch($validEmails);
+
+        try {
+            $results = $mailer->sendBatch($validEmails);
+        } catch (\Throwable $t) {
+            // Revert claimed emails to pending so they do not stay stuck in processing
+            $revert = $this->db->prepare("UPDATE emails SET status = 'pending', updated_at = ? WHERE id = ? AND status = 'processing'");
+            $revertNow = gmdate('c');
+            foreach ($validEmails as $ve) {
+                $revert->execute([$revertNow, $ve['id']]);
+            }
+            throw $t;
+        }
         $queue = new EmailQueue($this->db);
 
         $updateSent = $this->db->prepare("UPDATE emails SET status = ?, message_id = ?, error = NULL, updated_at = ? WHERE id = ?");

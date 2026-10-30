@@ -1,5 +1,6 @@
 (() => {
   let inboxPage = 1, inboxPages = 1, inboxRequest = 0, currentDetailId = null, searchTimer = null;
+  let inboxCategory = 'primary';
   const $ = selector => document.querySelector(selector);
 
   const AVATAR_PALETTE = [
@@ -53,6 +54,32 @@
     return `${formatted} (${rel})`;
   }
 
+  function formatQuotedHistory(text) {
+    const lines = String(text || '').replace(/\r\n/g, '\n').split('\n').map(line => line.replace(/^(?:\s*>)+ ?/, '').trimEnd());
+    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+    while (lines.length && lines[0].trim() === '') lines.shift();
+    if (!lines.length) return '';
+    let headerEnd = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/wrote:\s*$/i.test(lines[i].trim())) { headerEnd = i; break; }
+    }
+    const header = (headerEnd === -1 ? [] : lines.slice(0, headerEnd + 1)).map(line => line.trim()).filter(Boolean).join(' ');
+    const body = headerEnd === -1 ? lines : lines.slice(headerEnd + 1);
+    const paragraphs = [];
+    let chunk = [];
+    const flush = () => {
+      if (!chunk.length) return;
+      paragraphs.push(chunk.join(' ').replace(/\s+/g, ' ').trim());
+      chunk = [];
+    };
+    for (const line of body) {
+      if (line.trim() === '') flush();
+      else chunk.push(line.trim());
+    }
+    flush();
+    return [header, ...paragraphs].filter(Boolean).join('\n\n');
+  }
+
   function linkifyText(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -65,16 +92,37 @@
     });
   }
 
+  function visibleMessageHtml(html) {
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    doc.querySelectorAll('.gmail_quote, .gmail_quote_container, .gmail_attr').forEach(node => node.remove());
+    while (doc.body.lastChild && doc.body.lastChild.nodeName === 'BR') doc.body.lastChild.remove();
+    const text = (doc.body.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    return { text, html: doc.body.innerHTML.trim() };
+  }
+
+  function messageFrameDocument(html) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#202124;line-height:1.5;background:transparent;word-break:break-word}img{max-width:100%!important;height:auto}table{max-width:100%!important}a{color:#1a73e8}</style></head><body>${html}</body></html>`;
+  }
+
+  function mountMessageFrame(iframe, html) {
+    iframe.style.setProperty('border', 'none', 'important');
+    const fit = () => {
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc || !doc.body) return;
+        iframe.style.height = '0px';
+        const h = doc.body.scrollHeight;
+        if (h > 0) iframe.style.height = (h + 2) + 'px';
+      } catch (e) {}
+    };
+    iframe.addEventListener('load', fit);
+    iframe.srcdoc = messageFrameDocument(html);
+    fit();
+  }
+
   function renderThreadStackHtml(thread, counterpartEmail, originalSubject) {
-    return `
-      <div class="thread-overview-bar">
-        <div class="thread-overview-left">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span>Conversation History</span>
-          <span class="thread-overview-pill">${thread.length} messages</span>
-        </div>
-        <button type="button" class="thread-toggle-all-btn" id="thread-toggle-all-btn">Expand all</button>
-      </div>
+    const frames = {};
+    const html = `
       <div class="thread-stack" id="thread-stack-list">
         ${thread.map((msg, idx) => {
           const isLast = idx === thread.length - 1;
@@ -94,15 +142,16 @@
             <div class="thread-trimmed-wrapper">
               <button type="button" class="thread-trimmed-toggle" title="Show trimmed content">&hellip;</button>
               <div class="thread-trimmed-content" hidden>
-                <div class="thread-quoted-block">${linkifyText(quotedText)}</div>
+                <div class="thread-quoted-block">${linkifyText(formatQuotedHistory(quotedText))}</div>
               </div>
             </div>
           ` : '';
 
+          const visible = hasHtml ? visibleMessageHtml(msg.html_body) : null;
           let bodyRenderHtml = '';
-          if (hasHtml) {
-            const escapedDoc = escapeHtml(`<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>html,body{margin:0;padding:4px 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#202124;line-height:1.5;background:transparent;word-break:break-word}img{max-width:100%!important;height:auto}table{max-width:100%!important}a{color:#1a73e8}</style></head><body>${msg.html_body}</body></html>`);
-            bodyRenderHtml = `<div class="thread-html-wrapper"><iframe class="email-html-frame" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin" srcdoc="${escapedDoc}"></iframe></div>`;
+          if (visible && visible.text) {
+            frames[idx] = visible.html;
+            bodyRenderHtml = `<div class="thread-html-wrapper"><iframe class="email-html-frame" data-html-idx="${idx}" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"></iframe></div>`;
           } else {
             bodyRenderHtml = `<div class="thread-body-text">${mainContent || (quotedText ? '<em>(Quoted reply content)</em>' : '<em>(No message content)</em>')}</div>`;
           }
@@ -117,6 +166,7 @@
                       <span class="thread-sender-name">${escapeHtml(senderName)}</span>
                       <span class="thread-pill-tag ${isOutgoing ? 'sent' : 'inbox'}">${isOutgoing ? 'SENT' : 'INBOX'}</span>
                     </div>
+                    <div class="thread-to-line">to ${escapeHtml(msg.recipient || '')}</div>
                     <div class="thread-collapsed-snippet">${escapeHtml(snippet)}</div>
                   </div>
                 </div>
@@ -126,10 +176,6 @@
                 </div>
               </div>
               <div class="thread-card-body">
-                <div style="font-size:12px;color:#5f6368;margin-bottom:12px">
-                  <span>From: <strong>${escapeHtml(msg.sender_email)}</strong></span> &middot;
-                  <span>To: <strong>${escapeHtml(msg.recipient)}</strong></span>
-                </div>
                 ${bodyRenderHtml}
                 ${trimmedToggle}
               </div>
@@ -148,9 +194,17 @@
         </div>
       </div>
     `;
+    renderThreadStackHtml._frames = frames;
+    return html;
   }
 
   function attachThreadEvents(container, counterpartEmail, originalSubject, reloadCallback) {
+    const frames = renderThreadStackHtml._frames || {};
+    container.querySelectorAll('iframe.email-html-frame[data-html-idx]').forEach(iframe => {
+      const html = frames[iframe.dataset.htmlIdx];
+      if (html) mountMessageFrame(iframe, html);
+    });
+
     container.querySelectorAll('.thread-card-head').forEach(head => {
       head.addEventListener('click', () => {
         head.closest('.thread-card').classList.toggle('is-expanded');
@@ -203,7 +257,7 @@
               send_now: true
             })
           });
-          notice('Reply sent successfully via Hostinger SMTP!');
+          notice('Reply sent successfully!');
           if (typeof reloadCallback === 'function') {
             await reloadCallback();
           }
@@ -216,23 +270,27 @@
     }
   }
 
-  function updateBadge(count) {
+  function updateBadge(count, globalCount) {
     const badge = $('#nav-inbox-badge');
     const headerBadge = $('#inbox-header-badge');
     const overviewCount = $('#count-inbox');
-    if (overviewCount) overviewCount.textContent = count;
-    const text = count > 99 ? '99+' : count;
+    
+    // Global workspace unread badge (sidebar and overview)
+    const effectiveGlobal = (globalCount !== undefined && globalCount !== null) ? globalCount : count;
+    if (overviewCount) overviewCount.textContent = effectiveGlobal;
     if (badge) {
-      if (count > 0) {
-        badge.textContent = text;
+      if (effectiveGlobal > 0) {
+        badge.textContent = effectiveGlobal > 99 ? '99+' : effectiveGlobal;
         badge.hidden = false;
       } else {
         badge.hidden = true;
       }
     }
+
+    // Header badge reflects the currently active mailbox filter
     if (headerBadge) {
       if (count > 0) {
-        headerBadge.textContent = text;
+        headerBadge.textContent = count > 99 ? '99+' : count;
         headerBadge.hidden = false;
       } else {
         headerBadge.hidden = true;
@@ -251,7 +309,9 @@
       const status = $('#inbox-filter').value;
       const size = $('#inbox-size').value;
       const accountId = $('#inbox-account-filter')?.value || '';
-      const params = new URLSearchParams({ page: inboxPage, page_size: size, search, status, account_id: accountId });
+      const params = new URLSearchParams({ page: inboxPage, page_size: size, search, status, account_id: accountId, category: inboxCategory });
+      const from = inboxRangeStart($('#inbox-date-filter')?.value || '');
+      if (from) params.set('from', from);
 
       const data = await api('inbox?' + params);
       if (request !== inboxRequest) return;
@@ -259,7 +319,22 @@
       const p = data.pagination;
       inboxPage = p.page;
       inboxPages = p.pages;
-      updateBadge(data.unread_count);
+      updateBadge(data.unread_count, data.global_unread_count);
+
+      // Update category tab counts
+      if (data.category_counts) {
+        if ($('#inbox-count-primary')) $('#inbox-count-primary').textContent = data.category_counts.primary ?? 0;
+        if ($('#inbox-count-bounces')) $('#inbox-count-bounces').textContent = data.category_counts.bounces ?? 0;
+        if ($('#inbox-count-all')) $('#inbox-count-all').textContent = data.category_counts.all ?? 0;
+      }
+
+      const accountFilterEl = $('#inbox-account-filter');
+      const accountPillEl = $('#inbox-account-pill');
+      if (accountPillEl && accountFilterEl) {
+        const selText = accountFilterEl.options[accountFilterEl.selectedIndex]?.textContent || 'All Mailboxes';
+        const label = accountFilterEl.value ? selText.split(' (')[0] : 'All Mailboxes Active';
+        accountPillEl.innerHTML = `<span class="status-indicator-dot"></span>${escapeHtml(label)}`;
+      }
 
       const lastSyncEl = $('#inbox-last-sync');
       if (lastSyncEl && !lastSyncEl.textContent) {
@@ -268,10 +343,14 @@
 
       renderInboxRows(data.emails);
 
-      $('#inbox-range').textContent = `${p.from}–${p.to} of ${p.total} messages`;
+      const rangeText = p.total ? `${p.from}–${p.to} of ${p.total} messages` : '0 messages';
+      $('#inbox-range').textContent = rangeText;
       $('#inbox-page').textContent = `Page ${p.page} of ${p.pages}`;
-      $('#inbox-prev').disabled = p.page <= 1;
-      $('#inbox-next').disabled = p.page >= p.pages;
+      
+      const isFirst = p.page <= 1;
+      const isLast = p.page >= p.pages;
+      $('#inbox-prev').disabled = isFirst;
+      $('#inbox-next').disabled = isLast;
     } catch (e) {
       if (request === inboxRequest) {
         $('#inbox-range').textContent = 'Could not load messages. Click Refresh to try again.';
@@ -280,8 +359,21 @@
     }
   }
 
+  function inboxRangeStart(preset) {
+    if (!preset) return '';
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    if (preset === '7') start.setDate(start.getDate() - 6);
+    if (preset === '30') start.setDate(start.getDate() - 29);
+    return start.toISOString();
+  }
+
   function renderInboxRows(emails) {
     const tbody = $('#inbox-rows');
+    const mailboxCount = [...($('#inbox-account-filter')?.options || [])].filter(option => option.value).length;
+    const showMailbox = !$('#inbox-account-filter')?.value && mailboxCount > 1;
+    const mailboxHead = $('#inbox-mailbox-head');
+    if (mailboxHead) mailboxHead.hidden = !showMailbox;
     tbody.replaceChildren();
 
     for (const email of emails) {
@@ -296,14 +388,27 @@
       const av = getAvatarStyle(senderDisplay);
       const initial = senderDisplay.trim().charAt(0).toUpperCase();
 
+      const senderEmail = String(email.from_email || '').trim();
+      const showAddress = senderEmail && senderEmail.toLowerCase() !== senderDisplay.trim().toLowerCase();
       tdFrom.innerHTML = `
         <div class="inbox-sender-cell">
           <div class="inbox-avatar" style="background:${av.bg};color:${av.text}">${initial}</div>
           <div class="inbox-sender-info">
             <strong class="inbox-sender-name">${escapeHtml(senderDisplay)}</strong>
-            <small class="inbox-sender-email">${escapeHtml(email.from_email)}</small>
+            ${showAddress ? `<small class="inbox-sender-email">${escapeHtml(senderEmail)}</small>` : ''}
           </div>
         </div>
+      `;
+
+      // Mailbox attribution cell (symmetrical to Sent emails)
+      const tdMailbox = document.createElement('td');
+      tdMailbox.className = 'inbox-cell-mailbox';
+      const mailboxName = email.mailbox_name || email.mailbox_email || email.to_email || 'Default Mailbox';
+      const mailboxEmail = email.mailbox_email || email.to_email || '';
+      tdMailbox.innerHTML = `
+        <span class="inbox-mailbox-badge" title="${escapeHtml(mailboxEmail)}" style="margin:0;max-width:140px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${escapeHtml(mailboxName)}
+        </span>
       `;
 
       // Subject & preview cell (Gmail single-line style)
@@ -315,16 +420,15 @@
                              .replace(/\s+/g, ' ')
                              .trim();
       }
+      cleanSnip = cleanSnip.replace(/\s+/g, ' ').trim();
       const threadCountPill = Number(email.thread_count) > 1 ? `<span class="thread-count-badge">${email.thread_count}</span>` : '';
-      const toEmail = email.to_email || 'ray@rslsolution.com';
-      const destBadge = `<span class="inbox-mailbox-badge" title="Received at ${escapeHtml(toEmail)}">${escapeHtml(toEmail)}</span>`;
       tdSubject.innerHTML = `
-        <div class="inbox-preview-wrap">
-          ${destBadge}
-          <span class="inbox-subject-text">${escapeHtml(email.subject || '(No subject)')}</span>
-          ${threadCountPill}
-          <span class="inbox-snippet-separator">—</span>
-          <span class="inbox-snippet-text">${escapeHtml(cleanSnip || 'Message content received.')}</span>
+        <div class="sent-subject-block">
+          <div class="sent-subject-line">
+            <span class="inbox-subject-text">${escapeHtml(email.subject || '(No subject)')}</span>
+            ${threadCountPill}
+          </div>
+          ${cleanSnip ? `<div class="sent-snippet">${escapeHtml(cleanSnip)}</div>` : ''}
         </div>
       `;
 
@@ -340,7 +444,7 @@
       const viewBtn = document.createElement('button');
       viewBtn.type = 'button';
       viewBtn.className = 'quiet';
-      viewBtn.textContent = 'Read';
+      viewBtn.textContent = email.is_bounce ? 'Inspect' : 'Read';
       viewBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (window.openThreadReader) {
@@ -354,13 +458,20 @@
       replyBtn.type = 'button';
       replyBtn.className = 'quiet';
       replyBtn.textContent = 'Reply';
+      if (email.is_bounce) {
+        replyBtn.hidden = true;
+      }
       replyBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         replyToEmail(email);
       });
 
-      tdActions.append(viewBtn, replyBtn);
+      tdActions.append(viewBtn);
+      if (!email.is_bounce) {
+        tdActions.append(replyBtn);
+      }
       tr.append(tdFrom, tdSubject, tdDate, tdActions);
+      if (showMailbox) tr.insertBefore(tdMailbox, tdSubject);
 
       // Make entire row clickable like Gmail
       tr.addEventListener('click', (e) => {
@@ -377,16 +488,22 @@
     }
 
     if (!emails.length) {
+      let emptyMsg = 'This mailbox has no matching messages or has not been synced yet.';
+      if (inboxCategory === 'bounces') {
+        emptyMsg = 'No bounced or undelivered emails found.';
+      } else if (inboxCategory === 'primary') {
+        emptyMsg = 'No client replies or incoming messages yet.';
+      }
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 4;
+      td.colSpan = showMailbox ? 5 : 4;
       td.className = 'empty';
       td.innerHTML = `
         <div class="empty-icon">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>
         </div>
         <h3>No emails found</h3>
-        <p>Your Hostinger inbox has no matching messages or has not been synced yet.</p>
+        <p>${escapeHtml(emptyMsg)}</p>
         <button type="button" class="primary" id="empty-sync-btn">Sync inbox now</button>
       `;
       td.querySelector('#empty-sync-btn')?.addEventListener('click', syncInbox);
@@ -703,6 +820,11 @@
     loadInbox();
   });
 
+  $('#inbox-date-filter')?.addEventListener('change', () => {
+    inboxPage = 1;
+    loadInbox();
+  });
+
   const savedInboxSize = localStorage.getItem('rsl_inbox_size');
   if (savedInboxSize && $('#inbox-size')) {
     $('#inbox-size').value = savedInboxSize;
@@ -728,28 +850,40 @@
     }
   });
 
-  function setInboxAccountOptions(accounts, userRole, assignedAccountId) {
+  // Category Tabs (Client Replies vs Bounced vs All)
+  document.querySelectorAll('.inbox-cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cat = btn.dataset.category;
+      if (!cat || cat === inboxCategory) return;
+      document.querySelectorAll('.inbox-cat-btn').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      inboxCategory = cat;
+      inboxPage = 1;
+      loadInbox();
+    });
+  });
+
+  function setInboxAccountOptions(accounts) {
     const filterEl = $('#inbox-account-filter');
     if (!filterEl) return;
     const currentVal = filterEl.value;
     filterEl.replaceChildren();
-    if (userRole === 'admin') {
-      const allOpt = document.createElement('option');
-      allOpt.value = '';
-      allOpt.textContent = 'All Mailboxes';
-      filterEl.append(allOpt);
-    }
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All Mailboxes';
+    filterEl.append(allOpt);
     for (const acc of (accounts || [])) {
       const opt = document.createElement('option');
       opt.value = acc.id;
       opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
-      if (acc.is_default && userRole === 'admin') opt.textContent += ' [Default]';
       filterEl.append(opt);
     }
-    if (userRole === 'member' && assignedAccountId) {
-      filterEl.value = String(assignedAccountId);
-      filterEl.disabled = true;
-    } else if (currentVal) {
+    filterEl.disabled = false;
+    if (currentVal) {
       filterEl.value = currentVal;
     }
   }

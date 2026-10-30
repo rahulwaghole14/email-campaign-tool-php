@@ -13,6 +13,7 @@ use App\Services\AdminSetup;
 use App\Services\Google\GoogleClient;
 use App\Services\Sheets\SheetService;
 use App\Services\MailAccountService;
+use App\Services\DashboardService;
 use App\Services\UserService;
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -114,28 +115,28 @@ if ($path === '/api/login' && $method === 'POST') {
     $identifier = (string) ($input['email'] ?? ($input['username'] ?? ''));
     $password = (string) ($input['password'] ?? '');
 
-    try {
-        $db = Database::connect();
-        Database::migrate($db);
-        $user = UserService::authenticate($db, $identifier, $password);
-    } catch (\Throwable) {
-        $user = null;
+    $user = null;
+    if ($passwordHash && password_verify($password, $passwordHash)) {
+        $user = [
+            'id' => 1,
+            'name' => 'Workspace Admin',
+            'email' => getenv('ADMIN_EMAIL') ?: (getenv('SMTP_USERNAME') ?: 'admin@rslsolution.com'),
+            'role' => 'admin',
+            'assigned_account_id' => 1
+        ];
+    } else {
+        try {
+            $db = Database::connect();
+            Database::migrate($db);
+            $user = UserService::authenticate($db, $identifier, $password);
+        } catch (\Throwable) {
+            $user = null;
+        }
     }
 
     if (!$user) {
-        // Fallback to legacy single admin password check
-        if ($passwordHash && password_verify($password, $passwordHash)) {
-            $user = [
-                'id' => 1,
-                'name' => 'Administrator',
-                'email' => getenv('ADMIN_EMAIL') ?: (getenv('SMTP_USERNAME') ?: 'admin@rslsolution.com'),
-                'role' => 'admin',
-                'assigned_account_id' => 1
-            ];
-        } else {
-            usleep(500000);
-            respond(['error' => 'Invalid email or password.'], 401);
-        }
+        usleep(500000);
+        respond(['error' => 'Invalid password.'], 401);
     }
 
     session_regenerate_id(true);
@@ -178,7 +179,7 @@ if ($path === '/api/password-reset/request' && $method === 'POST') {
             'attempts' => 0
         ];
 
-        $subject = 'RSL Communication Desk — Password Reset Code';
+        $subject = 'RSL Communication Desk â€” Password Reset Code';
         $html = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;max-width:540px;margin:20px auto;padding:28px;border:1px solid #e0e6df;border-radius:12px;background:#ffffff;color:#202124;">'
             . '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">'
             . '<div style="background:#142e25;color:#ffffff;font-weight:700;font-size:18px;width:36px;height:36px;border-radius:8px;text-align:center;line-height:36px;">R</div>'
@@ -192,7 +193,7 @@ if ($path === '/api/password-reset/request' && $method === 'POST') {
             . '</div>'
             . '<p style="color:#5f6368;font-size:13px;line-height:1.6;margin:0 0 16px;">This code is valid for <strong>15 minutes</strong>. If you did not make this request, please disregard this email.</p>'
             . '<hr style="border:0;border-top:1px solid #edf0eb;margin:24px 0;">'
-            . '<div style="font-size:11px;color:#8a968d;text-align:center;">RSL Solution Pvt Ltd · Communication Desk</div>'
+            . '<div style="font-size:11px;color:#8a968d;text-align:center;">RSL Solution Pvt Ltd Â· Communication Desk</div>'
             . '</div>';
         $text = "RSL Communication Desk - Password Reset Code\n\nYour 6-digit verification code is: $code\n\nValid for 15 minutes. If you did not request this, please ignore.";
 
@@ -318,16 +319,14 @@ try {
 
     // Mail Accounts & Multi-Inbox Management
     if ($path === '/api/mail-accounts' && $method === 'GET') {
-        respond(MailAccountService::getForUser($db, $currentUser, false));
+        respond(MailAccountService::getAll($db, false));
     }
     if ($path === '/api/mail-accounts' && $method === 'POST') {
-        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can manage connected mail accounts.'], 403);
         $input = json_decode(file_get_contents('php://input'), true, 16, JSON_THROW_ON_ERROR);
         $id = !empty($input['id']) ? (int) $input['id'] : null;
         respond(MailAccountService::save($db, $input, $id));
     }
     if ($path === '/api/mail-accounts/test' && $method === 'POST') {
-        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can test mail accounts.'], 403);
         $input = json_decode(file_get_contents('php://input'), true, 16, JSON_THROW_ON_ERROR);
         if (!empty($input['id']) && empty($input['smtp_pass'])) {
             $existing = MailAccountService::getById($db, (int) $input['id'], true);
@@ -339,55 +338,14 @@ try {
         respond(MailAccountService::testConnection($input));
     }
     if (preg_match('#^/api/mail-accounts/(\d+)$#', $path, $match) && $method === 'DELETE') {
-        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can delete mail accounts.'], 403);
         MailAccountService::delete($db, (int) $match[1]);
         respond(['ok' => true]);
     }
 
-    // Role-Based User Management
-    if ($path === '/api/users' && $method === 'GET') {
-        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can view team members.'], 403);
-        respond(UserService::getAll($db));
-    }
-    if ($path === '/api/users' && $method === 'POST') {
-        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can manage team members.'], 403);
-        $input = json_decode(file_get_contents('php://input'), true, 16, JSON_THROW_ON_ERROR);
-        $id = !empty($input['id']) ? (int) $input['id'] : null;
-        respond(UserService::save($db, $input, $id));
-    }
-    if (preg_match('#^/api/users/(\d+)$#', $path, $match) && $method === 'DELETE') {
-        if ($currentUser['role'] !== 'admin') respond(['error' => 'Only administrators can delete team members.'], 403);
-        UserService::delete($db, (int) $match[1], $currentUser['id']);
-        respond(['ok' => true]);
-    }
-
     if ($path === '/api/inbox' && $method === 'GET') {
-        $queryParams = $_GET;
-        if ($currentUser['role'] === 'member') {
-            $queryParams['account_id'] = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : -1;
-            $queryParams['to_email'] = $currentUser['email'];
-        }
-        respond($imap->listing($queryParams));
+        respond($imap->listing($_GET));
     }
     if ($path === '/api/inbox/sync' && $method === 'POST') {
-        if ($currentUser['role'] === 'member') {
-            $memberAcctId = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : null;
-            if ($memberAcctId) {
-                $acct = MailAccountService::getById($db, $memberAcctId, true);
-                if ($acct && $acct['status'] === 'active') {
-                    try {
-                        $client = new ImapClient($db, $acct);
-                        $res = $client->sync(30);
-                        respond(['new_count' => (int) ($res['new_count'] ?? 0)]);
-                    } catch (\Throwable $t) {
-                        error_log("Member inbox sync error for account {$memberAcctId}: " . $t->getMessage());
-                        respond(['new_count' => 0, 'notice' => 'Mailbox could not be contacted. Verify credentials in Mail Accounts.']);
-                    }
-                }
-            }
-            respond(['new_count' => 0]);
-        }
-
         $allAccounts = MailAccountService::getAll($db, true);
         $totalNew = 0;
         if (!empty($allAccounts)) {
@@ -409,15 +367,6 @@ try {
     if (preg_match('#^/api/inbox/(\d+)$#', $path, $match) && $method === 'GET') {
         $detail = $imap->detail((int) $match[1]);
         if (!$detail) respond(['error' => 'Email not found.'], 404);
-        if ($currentUser['role'] === 'member') {
-            $memberAcctId = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : -1;
-            $memberEmail = strtolower(trim((string) $currentUser['email']));
-            $emailAcctId = (int) ($detail['mail_account_id'] ?? 0);
-            $emailTo = strtolower(trim((string) ($detail['to_email'] ?? '')));
-            if ($emailAcctId !== $memberAcctId && $emailTo !== $memberEmail) {
-                respond(['error' => 'Access denied.'], 403);
-            }
-        }
         respond($detail);
     }
     if (preg_match('#^/api/inbox/(\d+)/toggle-read$#', $path, $match) && $method === 'POST') {
@@ -460,290 +409,19 @@ try {
         ], 200);
     }
     if ($path === '/api/emails' && $method === 'GET') {
-        $queryParams = $_GET;
-        if ($currentUser['role'] === 'member') {
-            $queryParams['mail_account_id'] = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : -1;
-        }
-        respond($history->listing($queryParams));
+        respond($history->listing($_GET));
     }
     if (preg_match('#^/api/emails/(\d+)$#', $path, $match) && $method === 'GET') {
         $detail = $history->detail((int) $match[1]);
         if (!$detail) respond(['error'=>'Email not found.'], 404);
-        if ($currentUser['role'] === 'member') {
-            $memberAcctId = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : -1;
-            $emailAcctId = (int) ($detail['mail_account_id'] ?? 0);
-            if ($emailAcctId !== $memberAcctId) {
-                respond(['error' => 'Access denied.'], 403);
-            }
-        }
         respond($detail);
     }
     if (str_starts_with($path, '/api/google/') || str_starts_with($path, '/api/sheets')) {
         require dirname(__DIR__) . '/routes/sheets.php';
     }
     if ($path === '/api/dashboard' && $method === 'GET') {
-        $counts = ['pending' => 0, 'sent' => 0, 'failed' => 0, 'dry_run' => 0, 'processing' => 0];
-        $isMember = ($currentUser['role'] === 'member');
-        $memberAcctId = !empty($currentUser['assigned_account_id']) ? (int) $currentUser['assigned_account_id'] : null;
-        $memberEmail = strtolower(trim((string) $currentUser['email']));
-
-        if ($isMember) {
-            if ($memberAcctId !== null) {
-                $stmt = $db->prepare('SELECT status, COUNT(*) AS total FROM emails WHERE mail_account_id = ? GROUP BY status');
-                $stmt->execute([$memberAcctId]);
-                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) $counts[$row['status']] = (int) $row['total'];
-
-                $stmt = $db->prepare('SELECT COUNT(*) FROM inbox_emails WHERE mail_account_id = ? OR LOWER(to_email) = ?');
-                $stmt->execute([$memberAcctId, $memberEmail]);
-                $inboxTotal = (int) ($stmt->fetchColumn() ?: 0);
-
-                $stmt = $db->prepare('SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0 AND (mail_account_id = ? OR LOWER(to_email) = ?)');
-                $stmt->execute([$memberAcctId, $memberEmail]);
-                $inboxUnread = (int) ($stmt->fetchColumn() ?: 0);
-            } else {
-                $stmt = $db->prepare('SELECT COUNT(*) FROM inbox_emails WHERE LOWER(to_email) = ?');
-                $stmt->execute([$memberEmail]);
-                $inboxTotal = (int) ($stmt->fetchColumn() ?: 0);
-
-                $stmt = $db->prepare('SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0 AND LOWER(to_email) = ?');
-                $stmt->execute([$memberEmail]);
-                $inboxUnread = (int) ($stmt->fetchColumn() ?: 0);
-            }
-        } else {
-            foreach ($db->query('SELECT status, COUNT(*) AS total FROM emails GROUP BY status') as $row) $counts[$row['status']] = (int) $row['total'];
-            $inboxTotal = (int) ($db->query('SELECT COUNT(*) FROM inbox_emails')->fetchColumn() ?: 0);
-            $inboxUnread = (int) ($db->query('SELECT COUNT(*) FROM inbox_emails WHERE is_read = 0')->fetchColumn() ?: 0);
-        }
-        
-        $totalSent = $counts['sent'];
-        $totalFailed = $counts['failed'];
-        $deliveryRate = ($totalSent + $totalFailed) > 0 ? round(($totalSent / ($totalSent + $totalFailed)) * 100, 1) : 100.0;
-        
-        if ($isMember) {
-            if ($memberAcctId !== null) {
-                $stmt = $db->prepare("
-                    SELECT COUNT(DISTINCT LOWER(TRIM(e.recipient)))
-                    FROM emails e
-                    INNER JOIN inbox_emails i ON LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))
-                    WHERE e.status = 'sent' AND e.mail_account_id = ? AND (i.mail_account_id = ? OR LOWER(i.to_email) = ?)
-                ");
-                $stmt->execute([$memberAcctId, $memberAcctId, $memberEmail]);
-                $matchedReplies = (int) ($stmt->fetchColumn() ?: 0);
-
-                $stmt = $db->prepare("SELECT COUNT(DISTINCT LOWER(TRIM(recipient))) FROM emails WHERE status = 'sent' AND mail_account_id = ?");
-                $stmt->execute([$memberAcctId]);
-                $totalRecipients = (int) ($stmt->fetchColumn() ?: 0);
-            } else {
-                $matchedReplies = 0;
-                $totalRecipients = 0;
-            }
-        } else {
-            $matchedReplies = (int) ($db->query("
-                SELECT COUNT(DISTINCT LOWER(TRIM(e.recipient)))
-                FROM emails e
-                INNER JOIN inbox_emails i ON LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))
-                WHERE e.status = 'sent'
-            ")->fetchColumn() ?: 0);
-            $totalRecipients = (int) ($db->query("SELECT COUNT(DISTINCT LOWER(TRIM(recipient))) FROM emails WHERE status = 'sent'")->fetchColumn() ?: 0);
-        }
-        $responseRate = $totalRecipients > 0 ? min(100.0, round(($matchedReplies / $totalRecipients) * 100, 1)) : 0.0;
-
-        // 7-day trend
-        $days = [];
-        for ($i = 6; $i >= 0; $i--) {
-            $date = date('Y-m-d', strtotime("-$i days"));
-            $days[$date] = [
-                'day' => date('D', strtotime($date)),
-                'date' => $date,
-                'sent' => 0,
-                'received' => 0
-            ];
-        }
-
-        if ($isMember) {
-            if ($memberAcctId !== null) {
-                $stmt = $db->prepare("SELECT DATE(created_at) as d, COUNT(*) as c FROM emails WHERE mail_account_id = ? AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d");
-                $stmt->execute([$memberAcctId]);
-                $sentRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-                $stmt = $db->prepare("SELECT DATE(COALESCE(received_at, created_at)) as d, COUNT(*) as c FROM inbox_emails WHERE (mail_account_id = ? OR LOWER(to_email) = ?) AND COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d");
-                $stmt->execute([$memberAcctId, $memberEmail]);
-                $inboxRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } else {
-                $sentRows = [];
-                $stmt = $db->prepare("SELECT DATE(COALESCE(received_at, created_at)) as d, COUNT(*) as c FROM inbox_emails WHERE LOWER(to_email) = ? AND COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d");
-                $stmt->execute([$memberEmail]);
-                $inboxRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            }
-        } else {
-            $sentRows = $db->query("SELECT DATE(created_at) as d, COUNT(*) as c FROM emails WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d")->fetchAll(PDO::FETCH_ASSOC);
-            $inboxRows = $db->query("SELECT DATE(COALESCE(received_at, created_at)) as d, COUNT(*) as c FROM inbox_emails WHERE COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY d")->fetchAll(PDO::FETCH_ASSOC);
-        }
-        foreach ($sentRows as $r) {
-            if (isset($days[$r['d']])) $days[$r['d']]['sent'] = (int) $r['c'];
-        }
-        foreach ($inboxRows as $r) {
-            if (isset($days[$r['d']])) $days[$r['d']]['received'] = (int) $r['c'];
-        }
-
-        // Dynamic peak communication window
-        if ($isMember) {
-            if ($memberAcctId !== null) {
-                $stmt = $db->prepare("
-                    SELECT HOUR(COALESCE(received_at, created_at)) as h, COUNT(*) as c
-                    FROM inbox_emails
-                    WHERE (mail_account_id = ? OR LOWER(to_email) = ?) AND COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                    GROUP BY h
-                    ORDER BY c DESC
-                    LIMIT 1
-                ");
-                $stmt->execute([$memberAcctId, $memberEmail]);
-                $peakHourRow = $stmt->fetch(PDO::FETCH_ASSOC);
-            } else {
-                $peakHourRow = false;
-            }
-        } else {
-            $peakHourRow = $db->query("
-                SELECT HOUR(COALESCE(received_at, created_at)) as h, COUNT(*) as c
-                FROM inbox_emails
-                WHERE COALESCE(received_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                GROUP BY h
-                ORDER BY c DESC
-                LIMIT 1
-            ")->fetch(PDO::FETCH_ASSOC);
-        }
-
-        $peakWindow = '3:00 PM – 5:00 PM';
-        if ($peakHourRow && isset($peakHourRow['h']) && (int) $peakHourRow['c'] > 0) {
-            $h = (int) $peakHourRow['h'];
-            $startPeriod = $h >= 12 ? 'PM' : 'AM';
-            $h12 = $h % 12 ?: 12;
-            $hEnd = ($h + 2) % 24;
-            $endPeriod = $hEnd >= 12 ? 'PM' : 'AM';
-            $hEnd12 = $hEnd % 12 ?: 12;
-            $peakWindow = sprintf('%d:00 %s – %d:00 %s', $h12, $startPeriod, $hEnd12, $endPeriod);
-        }
-
-        // Top Engaged Contacts (Prioritize genuine leads over automated newsletters/jobalerts)
-        if ($isMember) {
-            if ($memberAcctId !== null) {
-                $stmt = $db->prepare("
-                    SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
-                           (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email)) AND e.mail_account_id = ?) +
-                           (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email)) AND (i2.mail_account_id = ? OR LOWER(i2.to_email) = ?)) AS thread_count
-                    FROM inbox_emails i
-                    INNER JOIN (
-                        SELECT MAX(id) as max_id FROM inbox_emails WHERE (mail_account_id = ? OR LOWER(to_email) = ?) GROUP BY LOWER(TRIM(from_email))
-                    ) latest ON i.id = latest.max_id
-                    WHERE (i.mail_account_id = ? OR LOWER(i.to_email) = ?)
-                      AND i.from_email NOT LIKE '%noreply%'
-                      AND i.from_email NOT LIKE '%no-reply%'
-                      AND i.from_email NOT LIKE '%jobalerts%'
-                      AND i.from_email NOT LIKE '%donotreply%'
-                      AND i.from_email NOT LIKE '%notification%'
-                      AND i.from_email NOT LIKE '%mailer-daemon%'
-                    ORDER BY i.id DESC
-                    LIMIT 5
-                ");
-                $stmt->execute([$memberAcctId, $memberAcctId, $memberEmail, $memberAcctId, $memberEmail, $memberAcctId, $memberEmail]);
-                $hotContacts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } else {
-                $hotContacts = [];
-            }
-        } else {
-            $hotContacts = $db->query("
-                SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
-                       (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))) +
-                       (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email))) AS thread_count
-                FROM inbox_emails i
-                INNER JOIN (
-                    SELECT MAX(id) as max_id FROM inbox_emails GROUP BY LOWER(TRIM(from_email))
-                ) latest ON i.id = latest.max_id
-                WHERE i.from_email NOT LIKE '%noreply%'
-                  AND i.from_email NOT LIKE '%no-reply%'
-                  AND i.from_email NOT LIKE '%jobalerts%'
-                  AND i.from_email NOT LIKE '%donotreply%'
-                  AND i.from_email NOT LIKE '%notification%'
-                  AND i.from_email NOT LIKE '%mailer-daemon%'
-                ORDER BY i.id DESC
-                LIMIT 5
-            ")->fetchAll(PDO::FETCH_ASSOC);
-        }
-
-        // If fewer than 5 contacts, backfill with most recent activity so list isn't empty
-        if (count($hotContacts) < 5) {
-            $excludeIds = !empty($hotContacts) ? implode(',', array_map('intval', array_column($hotContacts, 'id'))) : '0';
-            if ($isMember) {
-                if ($memberAcctId !== null) {
-                    $stmt = $db->prepare("
-                        SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
-                               (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email)) AND e.mail_account_id = ?) +
-                               (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email)) AND (i2.mail_account_id = ? OR LOWER(i2.to_email) = ?)) AS thread_count
-                        FROM inbox_emails i
-                        INNER JOIN (
-                            SELECT MAX(id) as max_id FROM inbox_emails WHERE (mail_account_id = ? OR LOWER(to_email) = ?) GROUP BY LOWER(TRIM(from_email))
-                        ) latest ON i.id = latest.max_id
-                        WHERE (i.mail_account_id = ? OR LOWER(i.to_email) = ?)
-                          AND i.id NOT IN ($excludeIds)
-                        ORDER BY i.id DESC
-                        LIMIT " . (5 - count($hotContacts))
-                    );
-                    $stmt->execute([$memberAcctId, $memberAcctId, $memberEmail, $memberAcctId, $memberEmail, $memberAcctId, $memberEmail]);
-                    $backfill = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                } else {
-                    $backfill = [];
-                }
-            } else {
-                $backfill = $db->query("
-                    SELECT i.id, i.from_name, i.from_email, i.snippet, i.body, i.html_body, i.received_at,
-                           (SELECT COUNT(*) FROM emails e WHERE LOWER(TRIM(e.recipient)) = LOWER(TRIM(i.from_email))) +
-                           (SELECT COUNT(*) FROM inbox_emails i2 WHERE LOWER(TRIM(i2.from_email)) = LOWER(TRIM(i.from_email))) AS thread_count
-                    FROM inbox_emails i
-                    INNER JOIN (
-                        SELECT MAX(id) as max_id FROM inbox_emails GROUP BY LOWER(TRIM(from_email))
-                    ) latest ON i.id = latest.max_id
-                    WHERE i.id NOT IN ($excludeIds)
-                    ORDER BY i.id DESC
-                    LIMIT " . (5 - count($hotContacts))
-                )->fetchAll(PDO::FETCH_ASSOC);
-            }
-            $hotContacts = array_merge($hotContacts, $backfill);
-        }
-
-        // Clean snippets using ConversationThread quote separation & cleanSnippet
-        foreach ($hotContacts as &$c) {
-            $rawSource = !empty($c['snippet']) ? $c['snippet'] : (!empty($c['body']) ? $c['body'] : ($c['html_body'] ?? ''));
-            $split = ConversationThread::splitQuotedText((string) $rawSource);
-            $cleanText = !empty($split['main']) ? $split['main'] : (string) $rawSource;
-            $cleaned = ImapClient::cleanSnippet($cleanText, 85);
-            $c['snippet'] = ($cleaned !== '' && $cleaned !== '.') ? $cleaned : 'Message received';
-            $c['from_name'] = $c['from_name'] ?: $c['from_email'];
-            unset($c['body'], $c['html_body']);
-        }
-        unset($c);
-
-        $sheetsCount = (int) ($db->query("SELECT (SELECT COUNT(*) FROM sheet_sources) + (SELECT COUNT(*) FROM uploaded_sheets)")->fetchColumn() ?: 0);
-
-        respond([
-            'counts' => array_merge($counts, [
-                'inbox_total' => $inboxTotal,
-                'inbox_unread' => $inboxUnread,
-                'delivery_rate' => $deliveryRate,
-                'response_rate' => $responseRate
-            ]),
-            'inbox_unread' => $inboxUnread,
-            'traffic_7d' => array_values($days),
-            'peak_window' => $peakWindow,
-            'hot_contacts' => $hotContacts,
-            'system_health' => [
-                'smtp_host' => 'smtp.hostinger.com:465',
-                'smtp_user' => $isMember ? $currentUser['email'] : (getenv('SMTP_USERNAME') ?: 'ray@rslsolution.com'),
-                'imap_host' => 'imap.hostinger.com:993',
-                'imap_total' => $inboxTotal,
-                'sheets_count' => $sheetsCount
-            ],
-            'dry_run' => (getenv('MAIL_DRY_RUN') ?: 'true') !== 'false'
-        ]);
+        $filterAccountId = !empty($_GET['account_id']) ? (int) $_GET['account_id'] : null;
+        respond(DashboardService::snapshot($db, $filterAccountId));
     }
     if ($path === '/api/attachments' && $method === 'POST') {
         if (empty($_FILES['file'])) {

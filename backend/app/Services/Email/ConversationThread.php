@@ -118,6 +118,36 @@ final class ConversationThread
         $senderEmail = mb_strtolower(trim((string) $inbox['from_email']), 'UTF-8');
         $normSub = self::normalizeSubject((string) $inbox['subject']);
 
+        // Bounce/NDR emails from Mail Delivery Systems should NOT be grouped together
+        if (ImapClient::isBounceEmail((string) ($inbox['from_name'] ?? ''), $senderEmail, (string) ($inbox['subject'] ?? ''))) {
+            $timestamp = $inbox['received_at'] ?: $inbox['created_at'];
+            $split = self::splitQuotedText((string) $inbox['body']);
+            $snippet = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($split['main']))), 0, 140);
+            if ($snippet === '') $snippet = mb_substr(trim(preg_replace('/\s+/', ' ', strip_tags($inbox['body']))), 0, 140);
+
+            return [[
+                'id' => (int) $inbox['id'],
+                'type' => 'incoming',
+                'is_bounce' => true,
+                'sender_name' => $inbox['from_name'] ?: $inbox['from_email'],
+                'sender_email' => $inbox['from_email'],
+                'recipient' => $inbox['to_email'] ?: (getenv('SMTP_USERNAME') ?: 'ray@rslsolution.com'),
+                'cc' => '',
+                'bcc' => '',
+                'subject' => $inbox['subject'],
+                'body' => $split['main'],
+                'quoted_history' => $split['quoted'],
+                'html_body' => $inbox['html_body'] ?? null,
+                'snippet' => $snippet,
+                'attachments' => [],
+                'status' => 'bounced',
+                'is_read' => (int) $inbox['is_read'],
+                'created_at' => $timestamp,
+                'timestamp' => strtotime($timestamp) ?: 0,
+                'is_active' => true
+            ]];
+        }
+
         return self::collectThreadMessages($db, $senderEmail, $normSub, null, $inboxId);
     }
 
@@ -257,7 +287,7 @@ final class ConversationThread
             $id = (int) $row['id'];
             $sender = mb_strtolower(trim((string) ($row['from_email'] ?? '')), 'UTF-8');
             $norm = self::normalizeSubject((string) ($row['subject'] ?? ''));
-            if ($sender === '' || $norm === '') {
+            if ($sender === '' || $norm === '' || ImapClient::isBounceEmail((string) ($row['from_name'] ?? ''), $sender, (string) ($row['subject'] ?? ''))) {
                 $counts[$id] = 1;
                 continue;
             }

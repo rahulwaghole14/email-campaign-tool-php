@@ -88,6 +88,12 @@ final class Database
         try {
             $db->exec("ALTER TABLE emails ADD COLUMN thread_id VARCHAR(128) NULL");
         } catch (\Throwable $e) {}
+        try {
+            $db->exec("UPDATE emails SET mail_account_id = 1 WHERE mail_account_id IS NULL");
+        } catch (\Throwable $e) {}
+        try {
+            $db->exec("UPDATE inbox_emails SET mail_account_id = 1 WHERE mail_account_id IS NULL");
+        } catch (\Throwable $e) {}
 
         // Seed default mail account if none exists
         try {
