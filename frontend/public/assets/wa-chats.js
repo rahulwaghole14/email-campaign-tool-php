@@ -152,12 +152,6 @@
     if (allTotal) allTotal.textContent = String(scoped.length);
     if (unreadLabel) unreadLabel.textContent = String(unreadTotal);
 
-    const activeCountEl = document.getElementById('wa-chat-active-count');
-    if (activeCountEl) {
-      const count = scoped.length;
-      activeCountEl.textContent = `${count} Active Conversation${count === 1 ? '' : 's'}`;
-    }
-
     let rows = listFilter === 'unread' ? scoped.filter((chat) => Number(chat.unread_count) > 0) : scoped;
     if (!query) return rows;
     return rows.filter((chat) => [chat.name, chat.phone, chat.last_message].join(' ').toLowerCase().includes(query));
