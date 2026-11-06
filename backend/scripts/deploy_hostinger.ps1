@@ -88,6 +88,9 @@ lcd "$workspaceRoot\backend\public"
 put index.php
 put migrate.php
 put .user.ini
+put favicon.ico
+put favicon.svg
+put favicon.png
 
 # --- Routes ---
 cd /backend/routes
@@ -114,6 +117,8 @@ put wa-device.js
 put wa-overview.js
 put wa-sent.js
 put wa-chats.js
+put favicon.svg
+put favicon.png
 
 # --- Dashboard View ---
 cd /frontend/resources/views/dashboard
