@@ -70,6 +70,7 @@ put WhatsAppChatService.php
 put WhatsAppInbox.php
 put WhatsAppOverviewService.php
 put WhatsAppSentService.php
+put WhatsAppTables.php
 
 # --- Google Services ---
 cd /backend/app/Services/Google
