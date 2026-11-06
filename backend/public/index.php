@@ -179,7 +179,7 @@ if ($path === '/api/password-reset/request' && $method === 'POST') {
             'attempts' => 0
         ];
 
-        $subject = 'RSL Communication Desk â€” Password Reset Code';
+        $subject = 'RSL Communication Desk &mdash; Password Reset Code';
         $html = '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;max-width:540px;margin:20px auto;padding:28px;border:1px solid #e0e6df;border-radius:12px;background:#ffffff;color:#202124;">'
             . '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">'
             . '<div style="background:#142e25;color:#ffffff;font-weight:700;font-size:18px;width:36px;height:36px;border-radius:8px;text-align:center;line-height:36px;">R</div>'
@@ -193,7 +193,7 @@ if ($path === '/api/password-reset/request' && $method === 'POST') {
             . '</div>'
             . '<p style="color:#5f6368;font-size:13px;line-height:1.6;margin:0 0 16px;">This code is valid for <strong>15 minutes</strong>. If you did not make this request, please disregard this email.</p>'
             . '<hr style="border:0;border-top:1px solid #edf0eb;margin:24px 0;">'
-            . '<div style="font-size:11px;color:#8a968d;text-align:center;">RSL Solution Pvt Ltd Â· Communication Desk</div>'
+            . '<div style="font-size:11px;color:#8a968d;text-align:center;">RSL Solution Pvt Ltd &middot; Communication Desk</div>'
             . '</div>';
         $text = "RSL Communication Desk - Password Reset Code\n\nYour 6-digit verification code is: $code\n\nValid for 15 minutes. If you did not request this, please ignore.";
 
@@ -418,6 +418,27 @@ try {
     }
     if (str_starts_with($path, '/api/google/') || str_starts_with($path, '/api/sheets')) {
         require dirname(__DIR__) . '/routes/sheets.php';
+    }
+    if ($path === '/api/whatsapp/send') {
+        require dirname(__DIR__) . '/routes/whatsapp_send.php';
+    }
+    if (str_starts_with($path, '/api/whatsapp/settings')) {
+        require dirname(__DIR__) . '/routes/whatsapp_settings.php';
+    }
+    if (str_starts_with($path, '/api/whatsapp/device')) {
+        require dirname(__DIR__) . '/routes/whatsapp_device.php';
+    }
+    if ($path === '/api/whatsapp/overview') {
+        require dirname(__DIR__) . '/routes/whatsapp_overview.php';
+    }
+    if (str_starts_with($path, '/api/whatsapp/sent')) {
+        require dirname(__DIR__) . '/routes/whatsapp_sent.php';
+    }
+    if (str_starts_with($path, '/api/whatsapp/chats') || str_starts_with($path, '/api/whatsapp/inbox')) {
+        require dirname(__DIR__) . '/routes/whatsapp_chats.php';
+    }
+    if (str_starts_with($path, '/api/whatsapp/sheets')) {
+        require dirname(__DIR__) . '/routes/whatsapp_sheets.php';
     }
     if ($path === '/api/dashboard' && $method === 'GET') {
         $filterAccountId = !empty($_GET['account_id']) ? (int) $_GET['account_id'] : null;

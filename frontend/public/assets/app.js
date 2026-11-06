@@ -14,8 +14,16 @@ function routeParts() {
   return { name: name || '', extra: rest.join('/') };
 }
 
+const waOnlyViews = ['wa-overview', 'wa-chats', 'wa-sent', 'wa-device', 'wa-settings', 'message'];
+const waViews = [...waOnlyViews, 'sheets'];
+
 function view(name) {
   if (!name) name = 'overview';
+  if (waOnlyViews.includes(name) && document.body.dataset.channel !== 'whatsapp') name = 'overview';
+  if (name === 'wa-home' || name === 'wa-sheets') name = document.body.dataset.channel === 'whatsapp' ? 'sheets' : 'overview';
+  if (name === 'compose' && document.body.dataset.channel === 'whatsapp') name = 'message';
+  if ((name === 'message' || name === 'wa-compose') && document.body.dataset.channel !== 'whatsapp') name = 'compose';
+  if (name === 'wa-compose') name = 'message';
   const targetView = document.getElementById(name);
   if (!targetView) name = 'overview';
 
@@ -32,7 +40,13 @@ function view(name) {
     if (el.dataset.view === activeNav) el.setAttribute('aria-current', 'page');
     else el.removeAttribute('aria-current');
   });
-  $('.sidebar-compose-btn')?.classList.toggle('active', activeNav === 'compose');
+  document.querySelectorAll('.sidebar-compose-btn').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
+
+  if (document.body.dataset.channel === 'whatsapp' && name !== 'thread-view') {
+    try { localStorage.setItem('rsl_wa_view', name); } catch (e) {}
+  } else if (document.body.dataset.channel !== 'whatsapp' && name !== 'thread-view') {
+    try { localStorage.setItem('rsl_email_view', name); } catch (e) {}
+  }
 
   if (name !== 'thread-view') {
     try {
@@ -46,17 +60,16 @@ function view(name) {
 
   if (name === 'overview') load?.();
   if (name === 'sheets') window.loadSheets?.();
+  if (name === 'wa-device') window.loadWaDevice?.();
+  if (name === 'wa-settings') window.loadWaSettings?.();
+  if (name === 'wa-sent') window.loadWaSent?.();
+  if (name === 'wa-overview') window.loadWaOverview?.();
+  if (name === 'wa-chats') window.loadWaChats?.();
   if (name === 'inbox') window.loadInbox?.();
   if (name === 'sent') loadSentPage?.();
   if (name === 'mail-accounts') loadMailAccounts?.();
-  if (name === 'compose') {
-    const titleEl = $('#compose-title');
-    const submitLabel = $('#compose-submit-label');
-    if (!$('input[name="subject"]')?.value?.startsWith('Re:')) {
-      if (titleEl) titleEl.textContent = 'Compose an email';
-      if (submitLabel) submitLabel.textContent = 'Send email';
-    }
-  }
+  if (name === 'compose') prepareCompose();
+  if (name === 'message') loadWaComposeSenders();
 }
 window.view = view;
 function cell(text) { const td = document.createElement('td'); td.textContent = text; return td; }
@@ -886,6 +899,15 @@ async function openEmailDetail(id) {
 window.openEmailDetail = openEmailDetail;
 $('#close-email-detail')?.addEventListener('click', () => $('#email-detail').close());
 $('#email-detail')?.addEventListener('close', () => { detailRequest++; });
+function chartDateLabel(date) {
+  const parts = String(date || '').split('-');
+  if (parts.length !== 3) return '';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[Number(parts[1]) - 1] || '';
+  const day = Number(parts[2]);
+  return month && day ? `${day} ${month}` : '';
+}
+
 function renderTrafficChart(days) {
   const container = $('#overview-chart-container');
   if (!container) return;
@@ -905,6 +927,8 @@ function renderTrafficChart(days) {
   const padBottom = 40;
   const plotW = w - padLeft - padRight;
   const plotH = h - padTop - padBottom;
+  const labelStep = days.length > 16 ? 5 : (days.length > 8 ? 2 : 1);
+  const dotRadius = days.length > 16 ? 3 : 4.5;
 
   const getX = (idx) => padLeft + (idx / Math.max(1, days.length - 1)) * plotW;
   const getY = (val) => padTop + plotH - (val / yMax) * plotH;
@@ -917,11 +941,14 @@ function renderTrafficChart(days) {
 
   const xLabels = days.map((d, i) => {
     const isToday = i === days.length - 1;
-    return `<text x="${getX(i)}" y="202" font-size="11" font-weight="${isToday ? '700' : '400'}" fill="${isToday ? '#285c43' : '#8f9e94'}" text-anchor="middle">${isToday ? 'Today' : escapeHtml(d.day)}</text>`;
+    const show = isToday || i % labelStep === 0;
+    if (!show) return '';
+    const label = isToday ? 'Today' : (days.length > 8 ? chartDateLabel(d.date) : d.day);
+    return `<text x="${getX(i)}" y="202" font-size="${days.length > 8 ? 10 : 11}" font-weight="${isToday ? '700' : '400'}" fill="${isToday ? '#285c43' : '#8f9e94'}" text-anchor="middle">${escapeHtml(label)}</text>`;
   }).join('');
 
-  const sentCircles = days.map((d, i) => `<circle cx="${getX(i)}" cy="${getY(d.sent)}" r="4.5" fill="#285c43" stroke="#fff" stroke-width="2"><title>${escapeHtml(d.day)} (${d.date}): ${d.sent} sent</title></circle>`).join('');
-  const recvCircles = days.map((d, i) => `<circle cx="${getX(i)}" cy="${getY(d.received)}" r="4.5" fill="#1a73e8" stroke="#fff" stroke-width="2"><title>${escapeHtml(d.day)} (${d.date}): ${d.received} received</title></circle>`).join('');
+  const sentCircles = days.map((d, i) => `<circle cx="${getX(i)}" cy="${getY(d.sent)}" r="${dotRadius}" fill="#285c43" stroke="#fff" stroke-width="2"><title>${escapeHtml(chartDateLabel(d.date) || d.day)}: ${d.sent} sent</title></circle>`).join('');
+  const recvCircles = days.map((d, i) => `<circle cx="${getX(i)}" cy="${getY(d.received)}" r="${dotRadius}" fill="#1a73e8" stroke="#fff" stroke-width="2"><title>${escapeHtml(chartDateLabel(d.date) || d.day)}: ${d.received} client replies</title></circle>`).join('');
 
   container.innerHTML = `
     <svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="none">
@@ -997,7 +1024,7 @@ function renderHotContacts(contacts) {
   container.replaceChildren();
 
   if (!contacts || !contacts.length) {
-    container.innerHTML = '<div style="padding:24px;text-align:center;color:#66786c">No incoming contact replies yet. Dispatched emails and recipient replies will appear here!</div>';
+    container.innerHTML = '<div style="padding:24px;text-align:center;color:#66786c">No mail needs a reply right now.</div>';
     return;
   }
 
@@ -1009,7 +1036,11 @@ function renderHotContacts(contacts) {
     const emailTag = `<span class="dash-contact-email" title="${escapeHtml(c.from_email)}">&lt;${escapeHtml(c.from_email)}&gt;</span>`;
     const av = getAvatarStyle(displayName || c.from_email);
     const initial = (displayName || c.from_email || 'C').trim().charAt(0).toUpperCase();
-    const timeFormatted = c.received_at ? new Date(c.received_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    const when = c.received_at ? new Date(c.received_at) : null;
+    const timeFormatted = when && !Number.isNaN(when.getTime())
+      ? when.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      : '';
+    const pill = c.needs_reply ? 'Needs a reply' : (c.thread_count > 1 ? `${c.thread_count} messages` : '1 message');
     let cleanSnippet = (c.snippet || '')
       .replace(/<style\b[^>]*>.*?<\/style>/gis, '')
       .replace(/<script\b[^>]*>.*?<\/script>/gis, '')
@@ -1030,7 +1061,7 @@ function renderHotContacts(contacts) {
         </div>
       </div>
       <div class="dash-contact-right">
-        <span class="dash-contact-pill">${c.thread_count > 1 ? `${c.thread_count} messages` : '1 message'}</span>
+        <span class="dash-contact-pill">${pill}</span>
         <div class="dash-contact-time">${timeFormatted}</div>
       </div>
     `;
@@ -1046,6 +1077,72 @@ function renderHotContacts(contacts) {
     container.append(item);
   }
 }
+
+let overviewRange = 7;
+let overviewRanges = null;
+
+function applyOverviewRange(span) {
+  const ranges = overviewRanges || {};
+  const range = ranges[span] || ranges[String(span)];
+  if (!range) return;
+  overviewRange = span;
+  document.querySelectorAll('#ov-range-pills .dash-time-pill').forEach((btn) => {
+    const on = Number(btn.dataset.range) === span;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  if ($('#ov-legend-sent')) $('#ov-legend-sent').textContent = `Sent these ${span} days (${range.sent ?? 0})`;
+  if ($('#ov-legend-received')) $('#ov-legend-received').textContent = `Client replies these ${span} days (${range.received ?? 0})`;
+  const peak = $('#ov-peak-window');
+  const note = $('#ov-peak-note');
+  const chip = $('#ov-peak');
+  if (peak) peak.textContent = range.peak_window || 'No client replies';
+  if (note) note.textContent = `Last ${span} days`;
+  if (chip) chip.classList.toggle('is-empty', !range.peak_window);
+  renderTrafficChart(range.traffic || []);
+}
+
+document.querySelector('#ov-range-pills')?.addEventListener('click', (event) => {
+  const btn = event.target.closest('.dash-time-pill');
+  if (!btn) return;
+  applyOverviewRange(Number(btn.dataset.range));
+});
+
+function applyChannel(next, navigate) {
+  const channel = next === 'whatsapp' ? 'whatsapp' : 'email';
+  try { localStorage.setItem('rsl_channel', channel); } catch (e) {}
+  document.body.dataset.channel = channel;
+  document.querySelectorAll('.channel-btn').forEach((btn) => {
+    const on = btn.dataset.channel === channel;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const title = document.getElementById('desk-title');
+  const kicker = document.getElementById('desk-kicker');
+  if (title) title.textContent = channel === 'whatsapp' ? 'WhatsApp Desk' : 'Email Desk';
+  if (kicker) kicker.textContent = channel === 'whatsapp' ? 'WHATSAPP OPERATIONS' : 'EMAIL OPERATIONS';
+  document.title = channel === 'whatsapp' ? 'RSL · WhatsApp Desk' : 'RSL · Email Desk';
+  document.querySelectorAll('nav .nav').forEach((btn) => {
+    if (!btn.dataset.channel) btn.dataset.channel = 'email';
+    btn.hidden = btn.dataset.channel !== channel;
+  });
+  document.querySelectorAll('.sidebar-compose-btn').forEach((el) => {
+    el.hidden = (el.dataset.channel || 'email') !== channel;
+  });
+  const composeWrap = document.querySelector('.sidebar-action-wrap');
+  if (composeWrap) composeWrap.hidden = false;
+  if (!navigate) return;
+  if (channel === 'whatsapp') {
+    const remembered = localStorage.getItem('rsl_wa_view') || 'wa-overview';
+    view(waViews.includes(remembered) ? remembered : 'wa-overview');
+  } else {
+    view(localStorage.getItem('rsl_email_view') || 'overview');
+  }
+}
+
+document.querySelectorAll('.channel-btn').forEach((btn) => {
+  btn.addEventListener('click', () => applyChannel(btn.dataset.channel, true));
+});
 
 async function load() {
   try {
@@ -1098,14 +1195,15 @@ async function load() {
         <span>${label}</span>
       `;
     }
-    if ($('#ov-peak-window') && data.peak_window) {
-      $('#ov-peak-window').textContent = data.peak_window;
-    }
-
-    if ($('#ov-legend-sent')) $('#ov-legend-sent').textContent = `Sent these 7 days (${week.sent ?? 0})`;
-    if ($('#ov-legend-received')) $('#ov-legend-received').textContent = `Client replies these 7 days (${week.received ?? 0})`;
-
-    renderTrafficChart(data.traffic_7d || []);
+    overviewRanges = data.ranges || {
+      7: {
+        traffic: data.traffic_7d || [],
+        sent: week.sent ?? 0,
+        received: week.received ?? 0,
+        peak_window: data.peak_window && String(data.peak_window).includes('–') ? data.peak_window : null
+      }
+    };
+    applyOverviewRange(overviewRange);
     renderDonutChart(counts.sent ?? 0, bounces + failed, pending);
     renderHotContacts(data.hot_contacts || []);
 
@@ -1183,10 +1281,16 @@ async function init() {
       await loadMailAccounts();
 
       const route = routeParts();
-      const savedView = route.name || localStorage.getItem('rsl_active_view') || 'overview';
+      applyChannel(localStorage.getItem('rsl_channel') || 'email', false);
+      const rememberedEmail = localStorage.getItem('rsl_email_view') || localStorage.getItem('rsl_active_view') || 'overview';
+      const rememberedWa = localStorage.getItem('rsl_wa_view') || 'wa-overview';
+      const savedView = document.body.dataset.channel === 'whatsapp'
+        ? (waViews.includes(route.name) ? route.name : (waViews.includes(rememberedWa) ? rememberedWa : 'wa-overview'))
+        : ((route.name && !waOnlyViews.includes(route.name) && route.name !== 'wa-home' && route.name !== 'wa-sheets') ? route.name : ((waOnlyViews.includes(rememberedEmail) || rememberedEmail === 'wa-home' || rememberedEmail === 'wa-sheets') ? 'overview' : rememberedEmail));
       if (!route.name && savedView === 'sheets') {
-        const savedSheet = localStorage.getItem('rsl_open_sheet');
-        if (savedSheet) history.replaceState(null, '', '#sheets/' + savedSheet);
+        const wa = document.body.dataset.channel === 'whatsapp';
+        const savedSheet = localStorage.getItem(wa ? 'rsl_open_wa_sheet' : 'rsl_open_sheet');
+        if (savedSheet) history.replaceState(null, '', '#sheets/' + (wa ? 'wa-' : '') + savedSheet);
       }
 
       // Pre-set view hidden attributes before revealing #app to prevent any FOUC / flash of overview
@@ -1482,15 +1586,116 @@ $('#compose-form').addEventListener('input', () => {
   if (error) error.hidden = true;
 });
 
+function prepareCompose() {
+  const wa = document.body.dataset.channel === 'whatsapp';
+  document.querySelectorAll('.email-compose-only').forEach((el) => { el.hidden = wa; });
+  const to = $('#compose-to');
+  if (to) {
+    to.type = wa ? 'tel' : 'email';
+    to.placeholder = wa ? '+91 98765 43210' : 'recipient@example.com';
+    to.setAttribute('autocomplete', wa ? 'tel' : 'email');
+  }
+  const subject = document.querySelector('#compose-form input[name="subject"]');
+  if (subject) subject.required = !wa;
+  const eyebrow = $('#compose-eyebrow');
+  const titleEl = $('#compose-title');
+  const submitLabel = $('#compose-submit-label');
+  if (wa) {
+    if (eyebrow) eyebrow.textContent = 'ONE MESSAGE';
+    if (titleEl) titleEl.textContent = 'New message';
+    if (submitLabel) submitLabel.textContent = 'Send message';
+    return;
+  }
+  if (eyebrow) eyebrow.textContent = 'NEW DISPATCH';
+  if (subject?.value?.startsWith('Re:')) return;
+  if (titleEl) titleEl.textContent = 'Compose an email';
+  if (submitLabel) submitLabel.textContent = 'Send email';
+}
+
+async function loadWaComposeSenders() {
+  const select = $('#wa-compose-sender');
+  if (!select) return;
+  select.innerHTML = '<option value="">Loading linked phones…</option>';
+  try {
+    const roster = await api('whatsapp/device');
+    const devices = (roster.devices || []).filter(d => d.status === 'ready' || d.status === 'connected');
+    select.innerHTML = '';
+    if (!devices.length) {
+      select.innerHTML = '<option value="">No connected phone. Open Linked device to pair.</option>';
+      updateWaComposeHint('');
+      return;
+    }
+    devices.forEach((d, idx) => {
+      const opt = document.createElement('option');
+      opt.value = d.device_id || d.device_uuid || d.id || '';
+      const phoneStr = d.phone ? ` · +${d.phone.replace(/^\+/, '')}` : '';
+      opt.textContent = `${d.name || 'Phone'}${phoneStr} (Connected)`;
+      if (idx === 0) opt.selected = true;
+      select.appendChild(opt);
+    });
+    updateWaComposeHint(select.options[select.selectedIndex]?.text || '');
+  } catch (err) {
+    select.innerHTML = '<option value="">Default connected phone</option>';
+    updateWaComposeHint('');
+  }
+}
+window.loadWaComposeSenders = loadWaComposeSenders;
+
+function updateWaComposeHint(text) {
+  const hint = document.querySelector('.wa-compose-foot-hint');
+  if (!hint) return;
+  if (!text) {
+    hint.textContent = 'Dispatches directly via connected phone';
+    return;
+  }
+  const clean = text.replace(/ \(Connected\)$/, '');
+  hint.textContent = `Dispatches via ${clean}`;
+}
+
+$('#wa-compose-sender')?.addEventListener('change', event => {
+  updateWaComposeHint(event.target.options[event.target.selectedIndex]?.text || '');
+});
+
+$('#wa-compose-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.target;
+  const error = $('#wa-compose-error');
+  const phone = form.phone.value.trim();
+  const message = form.message.value.trim();
+  const deviceId = form.device_id ? form.device_id.value.trim() : '';
+  if (!phone || !message) {
+    if (error) {
+      error.textContent = !phone ? 'Enter a phone number before sending.' : 'Write the message before sending.';
+      error.hidden = false;
+    }
+    (phone ? form.message : form.phone).focus();
+    return;
+  }
+  if (error) error.hidden = true;
+  const button = $('#wa-compose-send');
+  if (button) button.disabled = true;
+  try {
+    await api('whatsapp/send', {method:'POST', body:JSON.stringify({phone, message, device_id: deviceId})});
+    form.reset();
+    loadWaComposeSenders();
+    notice('Message sent.');
+    view('wa-sent');
+    await window.loadWaSent?.();
+  } catch (e) {
+    if (error) { error.textContent = e.message; error.hidden = false; }
+  } finally {
+    if (button) button.disabled = false;
+  }
+});
+
 $('#compose-form').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.target;
   const error = $('#compose-form-error');
-  const missing = [
-    [form.recipient, 'a recipient'],
-    [form.subject, 'a subject'],
-    [form.body, 'a message'],
-  ].filter(([field]) => !field.value.trim());
+  const wa = document.body.dataset.channel === 'whatsapp';
+  const checks = [[form.recipient, wa ? 'a phone number' : 'a recipient'], [form.body, 'a message']];
+  if (!wa) checks.splice(1, 0, [form.subject, 'a subject']);
+  const missing = checks.filter(([field]) => !String(field.value || '').trim());
   if (missing.length) {
     if (error) {
       const labels = missing.map(([, label]) => label);
@@ -1548,7 +1753,7 @@ $('.compose-discard-btn')?.addEventListener('click', () => {
   currentAttachments = [];
   renderComposeAttachments();
   notice('Draft discarded.');
-  view('inbox');
+  view(document.body.dataset.channel === 'whatsapp' ? 'wa-overview' : 'inbox');
 });
 $('#search')?.addEventListener('input', () => { clearTimeout(searchTimer); emailRequest++; emailPage = 1; searchTimer = setTimeout(() => loadEmailPage().catch(e => notice(e.message,true)),250); });
 $('#email-status')?.addEventListener('change', () => { emailPage = 1; loadEmailPage().catch(e => notice(e.message,true)); });

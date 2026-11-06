@@ -15,7 +15,12 @@ final class DashboardService
     {
         $tz = new DateTimeZone(getenv('APP_TIMEZONE') ?: 'Asia/Kolkata');
         $today = new DateTimeImmutable('today', $tz);
-        $windowStart = $today->modify('-6 days');
+        $span = 30;
+        $windowStart = $today->modify('-' . ($span - 1) . ' days');
+        $rangeStarts = [];
+        foreach ([7, 15, 30] as $range) {
+            $rangeStarts[$range] = $today->modify('-' . ($range - 1) . ' days')->format('Y-m-d');
+        }
 
         $counts = ['pending' => 0, 'sent' => 0, 'failed' => 0, 'dry_run' => 0, 'processing' => 0];
         $emailSql = 'SELECT status, recipient, created_at FROM emails';
@@ -37,7 +42,7 @@ final class DashboardService
 
         $sentRecipients = [];
         $days = [];
-        for ($i = 0; $i < 7; $i++) {
+        for ($i = 0; $i < $span; $i++) {
             $day = $windowStart->modify('+' . $i . ' days');
             $key = $day->format('Y-m-d');
             $days[$key] = [
@@ -47,6 +52,11 @@ final class DashboardService
                 'received' => 0,
             ];
         }
+        $rangeHours = [
+            7 => array_fill(0, 24, 0),
+            15 => array_fill(0, 24, 0),
+            30 => array_fill(0, 24, 0),
+        ];
 
         foreach ($emails as $row) {
             $status = (string) ($row['status'] ?? '');
@@ -76,7 +86,6 @@ final class DashboardService
         $clientUnread = 0;
         $bounces = 0;
         $replied = [];
-        $hours = array_fill(0, 24, 0);
         $latestBySender = [];
 
         foreach ($inbox as $row) {
@@ -84,12 +93,16 @@ final class DashboardService
             $fromName = trim((string) ($row['from_name'] ?? ''));
             $subject = trim((string) ($row['subject'] ?? ''));
             $isBounce = ImapClient::isBounceEmail($fromName, $fromEmail, $subject);
+            $isLinkedIn = self::isLinkedInSender($fromEmail);
             $unread = (int) ($row['is_read'] ?? 0) === 0;
             if ($unread) {
                 $inboxUnread++;
             }
             if ($isBounce) {
                 $bounces++;
+                continue;
+            }
+            if ($isLinkedIn) {
                 continue;
             }
 
@@ -107,12 +120,18 @@ final class DashboardService
                 if (isset($days[$key])) {
                     $days[$key]['received']++;
                     if (!self::isNoiseSender($fromEmail, $fromName)) {
-                        $hours[(int) $when->format('G')]++;
+                        $hour = (int) $when->format('G');
+                        foreach ($rangeStarts as $range => $start) {
+                            if ($key >= $start) {
+                                $rangeHours[$range][$hour]++;
+                            }
+                        }
                     }
                 }
             }
 
-            if ($fromEmail === '' || self::isNoiseSender($fromEmail, $fromName)) {
+            $snippet = (string) ($row['snippet'] ?? '');
+            if ($fromEmail === '' || self::isNoiseSender($fromEmail, $fromName) || self::isBulkSender($fromEmail) || self::isTestReceipt($subject, $snippet) || self::isVendorBlast($subject, $snippet)) {
                 continue;
             }
             $current = $latestBySender[$fromEmail] ?? null;
@@ -144,22 +163,22 @@ final class DashboardService
         }
 
         $hot = array_values($latestBySender);
-        usort($hot, static function (array $a, array $b) use ($sentCount): int {
-            $aMessages = $a['inbox_count'] + ($sentCount[self::address($a['from_email'])] ?? 0);
-            $bMessages = $b['inbox_count'] + ($sentCount[self::address($b['from_email'])] ?? 0);
-            return $bMessages <=> $aMessages ?: $b['id'] <=> $a['id'];
+        usort($hot, static function (array $a, array $b): int {
+            return strcmp((string) $b['received_at'], (string) $a['received_at']) ?: $b['id'] <=> $a['id'];
         });
         $hot = array_slice($hot, 0, 5);
         $hotContacts = [];
         foreach ($hot as $contact) {
             $email = self::address($contact['from_email']);
+            $sentTo = $sentCount[$email] ?? 0;
             $hotContacts[] = [
                 'id' => $contact['id'],
                 'from_name' => $contact['from_name'],
                 'from_email' => $contact['from_email'],
                 'snippet' => $contact['snippet'],
                 'received_at' => $contact['received_at'],
-                'thread_count' => $contact['inbox_count'] + ($sentCount[$email] ?? 0),
+                'thread_count' => $contact['inbox_count'] + $sentTo,
+                'needs_reply' => $sentTo === 0,
             ];
         }
 
@@ -175,22 +194,25 @@ final class DashboardService
             ? min(100.0, round((count($replied) / $recipientTotal) * 100, 1))
             : 0.0;
 
-        $peakHour = null;
-        $peakCount = 0;
-        foreach ($hours as $hour => $count) {
-            if ($count > $peakCount) {
-                $peakCount = $count;
-                $peakHour = $hour;
+        $ranges = [];
+        foreach ([7, 15, 30] as $range) {
+            $slice = array_values(array_slice($days, -$range, $range, true));
+            $rangeSent = 0;
+            $rangeReceived = 0;
+            foreach ($slice as $day) {
+                $rangeSent += $day['sent'];
+                $rangeReceived += $day['received'];
             }
+            $ranges[(string) $range] = [
+                'traffic' => $slice,
+                'sent' => $rangeSent,
+                'received' => $rangeReceived,
+                'peak_window' => self::peakWindow($rangeHours[$range]),
+            ];
         }
-        $peakWindow = $peakHour === null ? 'No client replies in the last 7 days' : self::hourWindow((int) $peakHour);
-
-        $weekSent = 0;
-        $weekReceived = 0;
-        foreach ($days as $day) {
-            $weekSent += $day['sent'];
-            $weekReceived += $day['received'];
-        }
+        $weekSent = $ranges['7']['sent'];
+        $weekReceived = $ranges['7']['received'];
+        $peakWindow = $ranges['7']['peak_window'] ?? 'No client replies in the last 7 days';
 
         $lastSync = null;
         try {
@@ -222,9 +244,10 @@ final class DashboardService
                 'sent_recipients' => $recipientTotal,
             ]),
             'inbox_unread' => $inboxUnread,
-            'traffic_7d' => array_values($days),
+            'traffic_7d' => $ranges['7']['traffic'],
             'week_totals' => ['sent' => $weekSent, 'received' => $weekReceived],
             'peak_window' => $peakWindow,
+            'ranges' => $ranges,
             'last_sync' => $lastSync,
             'hot_contacts' => $hotContacts,
             'system_health' => [
@@ -256,6 +279,19 @@ final class DashboardService
         }
     }
 
+    private static function peakWindow(array $hours): ?string
+    {
+        $peakHour = null;
+        $peakCount = 0;
+        foreach ($hours as $hour => $count) {
+            if ($count > $peakCount) {
+                $peakCount = $count;
+                $peakHour = (int) $hour;
+            }
+        }
+        return $peakHour === null ? null : self::hourWindow($peakHour);
+    }
+
     private static function hourWindow(int $hour): string
     {
         $format = static function (int $value): string {
@@ -267,6 +303,61 @@ final class DashboardService
             return $clock . ':00 ' . $period;
         };
         return $format($hour) . ' – ' . $format(($hour + 2) % 24);
+    }
+
+    private static function isBulkSender(string $email): bool
+    {
+        $email = strtolower($email);
+        foreach (['ccsend.com', 'mcsv.net', 'sendgrid.net', 'hubspotemail.net', 'constantcontact.com', 'list-manage.com', 'mailchimp.com'] as $domain) {
+            if (str_contains($email, $domain)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static function isVendorBlast(string $subject, string $snippet): bool
+    {
+        if (preg_match('/^\s*re\s*:/i', $subject) === 1 || str_contains($subject . ' ' . $snippet, '?')) {
+            return false;
+        }
+        return preg_match('/^\s*dear\s+\S+/i', self::ownReply($snippet)) === 1;
+    }
+
+    private static function isTestReceipt(string $subject, string $snippet): bool
+    {
+        $haystack = strtolower($subject . ' ' . $snippet);
+        if (str_contains($haystack, 'please confirm receipt')
+            || str_contains($haystack, 'communication desk verification')
+            || str_contains($haystack, '[test]')) {
+            return true;
+        }
+        $reply = strtolower(self::ownReply($snippet));
+        $reply = preg_replace('/[^\p{L}\p{N}\s]/u', '', $reply) ?? $reply;
+        $reply = trim(preg_replace('/\s+/', ' ', $reply) ?? $reply);
+        return in_array($reply, [
+            'yes received',
+            'yes i received it',
+            'i received it',
+            'received',
+            'recived',
+            'okay',
+            'ok',
+        ], true);
+    }
+
+    private static function ownReply(string $snippet): string
+    {
+        $text = trim(preg_replace('/\s+/', ' ', $snippet) ?? '');
+        $text = preg_replace('/\s+On\s+.{0,120}?wrote:.*$/i', '', $text) ?? $text;
+        $text = preg_replace('/\s*-{2,}\s*Original Message.*$/i', '', $text) ?? $text;
+        $text = preg_replace('/\s*>.*$/', '', $text) ?? $text;
+        return trim($text);
+    }
+
+    private static function isLinkedInSender(string $email): bool
+    {
+        return str_contains(strtolower($email), 'linkedin.com');
     }
 
     private static function isNoiseSender(string $email, string $name): bool

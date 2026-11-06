@@ -12,11 +12,21 @@ $sheets = new SheetService($db, fn($method, $path, $body) => str_starts_with(raw
 try {
     if ($path === '/api/sheets/upload' && $method === 'POST') {
         $file = $_FILES['file'] ?? null;
-        if (!$file || !is_array($file) || !isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) throw new InvalidArgumentException('Upload failed. Choose a file within the server upload limit (maximum 5 MB).');
+        if (!$file || !is_array($file) || !isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) throw new InvalidArgumentException('Upload failed. Choose a file within the server upload limit (maximum 10 MB).');
         if (!is_string($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) throw new InvalidArgumentException('Invalid file upload.');
-        if ($file['size'] > UploadReader::MAX_BYTES) respond(['error' => 'Upload a file no larger than 5 MB.'], 413);
+        if ($file['size'] > UploadReader::MAX_BYTES) respond(['error' => 'Upload a file no larger than 10 MB.'], 413);
         $id = $uploads->import($file['tmp_name'], $file['name']);
         respond(['upload_id' => $id, 'metadata' => $sheets->metadata($id)], 201);
+    }
+    if (preg_match('#^/api/sheets/(\d+)/replace$#', $path, $replaceMatch) && $method === 'POST') {
+        $file = $_FILES['file'] ?? null;
+        if (!$file || !is_array($file) || !isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) throw new InvalidArgumentException('Upload failed. Choose a file within the server upload limit (maximum 10 MB).');
+        if (!is_string($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) throw new InvalidArgumentException('Invalid file upload.');
+        if ($file['size'] > UploadReader::MAX_BYTES) respond(['error' => 'Upload a file no larger than 10 MB.'], 413);
+        $source = $sheets->source((int) $replaceMatch[1]);
+        if (!str_starts_with((string) $source['spreadsheet_id'], 'upload:')) throw new InvalidArgumentException('Update the file on an uploaded sheet. A Google Sheet is read live.');
+        $uploads->replace($source['spreadsheet_id'], $file['tmp_name'], $file['name']);
+        respond(['ok' => true]);
     }
     if ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 300000) respond(['error' => 'Request too large.'], 413);
     $input = $method === 'POST' ? json_decode(file_get_contents('php://input'), true, 32, JSON_THROW_ON_ERROR) : [];
@@ -48,10 +58,17 @@ try {
         respond(['title' => $data['title'], 'headers' => $data['headers'], 'sample' => array_slice($data['values'], 0, 3)]);
     }
     if ($path === '/api/sheets' && $method === 'POST') respond(['id' => $sheets->save($input)], 201);
-    if (preg_match('#^/api/sheets/(\d+)(?:/(edit|queue|send|batch-send|mapping|reset-processing))?$#', $path, $matches)) {
+    if (preg_match('#^/api/sheets/(\d+)(?:/(edit|queue|send|batch-send|mapping|reset-processing|download))?$#', $path, $matches)) {
         $sourceId = (int) $matches[1]; $action = $matches[2] ?? '';
         if ($method === 'DELETE') { $sheets->delete($sourceId); respond(['ok' => true]); }
         if ($method === 'GET' && $action === '') respond($sheets->preview($sourceId));
+        if ($method === 'GET' && $action === 'download') {
+            $file = $sheets->download($sourceId);
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $file['filename'] . '"');
+            echo $file['body'];
+            exit;
+        }
         if ($method === 'POST' && $action === 'edit') { $sheets->edit($sourceId, $input); respond(['ok' => true]); }
         if ($method === 'POST' && $action === 'queue') respond(['id' => $sheets->enqueue($sourceId, $input)]);
         if ($method === 'POST' && $action === 'send') respond($sheets->send($sourceId, $input));
@@ -61,8 +78,11 @@ try {
     }
     respond(['error' => 'Endpoint not found.'], 404);
 } catch (PDOException $e) {
-    error_log('Google Sheets database operation failed.');
-    respond(['error' => 'Unable to save source settings. Check the database connection.'], 500);
+    error_log('Sheets database error: ' . $e->getMessage());
+    $message = str_contains($path, 'batch-send')
+        ? 'This batch could not be saved. Mail that already went out is kept. Send the failed rows again.'
+        : 'Unable to save source settings. Check the database connection.';
+    respond(['error' => $message], 500);
 } catch (RuntimeException $e) {
     respond(['error' => $e->getMessage()], 409);
 }

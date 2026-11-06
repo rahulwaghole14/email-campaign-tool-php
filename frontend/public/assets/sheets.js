@@ -5,24 +5,52 @@
     const preview = document.getElementById('sheet-preview');
     if (dir) dir.hidden = true;
     if (preview) preview.hidden = false;
+    const sheetsSec = document.getElementById('sheets');
+    if (sheetsSec) sheetsSec.classList.add('in-preview');
     earlySheet.remove();
   }
-  const fields = {id:'Record ID',name:'Agency / recipient name',email:'Email',subject:'Email subject',body:'Email content',link:'Drive link',cc:'CC',bcc:'BCC',enabled:'Send Enabled'};
-  const aliases = {id:['id','record_id'], name:['agency name','recipient_name'],email:['email','recipient_email'],subject:['email subject','subject'],body:['email content','message'],link:['drive_link','drive link'],cc:['cc'],bcc:['bcc'],enabled:['send enabled','send_enabled']};
+  const fields = {id:'Record ID',name:'Agency / recipient name',email:'Email',subject:'Email subject',body:'Email content',link:'Drive link',cc:'CC',bcc:'BCC',enabled:'Send Enabled',followup1_subject:'Follow-up 1 subject',followup1_body:'Follow-up 1 message',followup2_subject:'Follow-up 2 subject',followup2_body:'Follow-up 2 message'};
+  const aliases = {id:['id','record_id'], name:['agency name','recipient_name'],email:['email','recipient_email'],subject:['email subject','subject'],body:['email content','message'],link:['drive_link','drive link'],cc:['cc'],bcc:['bcc'],enabled:['send enabled','send_enabled'],followup1_subject:['follow-up subject 1','follow-up email 1','followup email 1'],followup1_body:['follow-up content 1','follow-up message 1','follow-up email content 1'],followup2_subject:['follow-up subject 2','follow-up email 2','followup email 2'],followup2_body:['follow-up content 2','follow-up message 2','follow-up email content 2']};
+  const waFields = {id:'Record ID',name:'Agency name',phone:'Phone number',message:'WhatsApp content'};
+  const waAliases = {id:['id','record id','record_id'],name:['agency name','name'],phone:['phone','phone number','mobile','whatsapp number'],message:['whatsapp content','whatsapp message']};
+  const sheetMode = () => document.body.dataset.channel === 'whatsapp' ? 'whatsapp' : 'email';
+  const activeFields = () => sheetMode() === 'whatsapp' ? waFields : fields;
+  const activeAliases = () => sheetMode() === 'whatsapp' ? waAliases : aliases;
+  const sheetApi = (action = '') => {
+    const root = sheetMode() === 'whatsapp' ? 'whatsapp/sheets' : 'sheets';
+    return action ? `${root}/${String(action).replace(/^\//, '')}` : root;
+  };
+  const openSheetKey = () => sheetMode() === 'whatsapp' ? 'rsl_open_wa_sheet' : 'rsl_open_sheet';
+  const rowHaystack = row => {
+    const values = row.values || {};
+    const parts = sheetMode() === 'whatsapp'
+      ? [row.record_id, values.name, values.phone, values.message]
+      : [row.record_id, values.name, values.email, values.subject];
+    return parts.map(value => String(value || '').toLowerCase());
+  };
+  let sheetChannel = sheetMode();
   let inspectedUrl = '', source = null, records = [], page = 0, editing = null, mappingId = null, savedMapping = null, openedId = null, sheetFilter = '';
   let uploadId = null;
-  let uploadLimit = 5 * 1024 * 1024;
+  let uploadLimit = 10 * 1024 * 1024;
   let allSources = [];
   const selectedIds = new Set();
   const isUpload = item => item?.spreadsheet_id?.startsWith('upload:');
   const sourceInput = () => uploadId ? {upload_id:uploadId} : {url:inspectedUrl};
   const post = (path, data = {}) => api(path, {method:'POST',body:JSON.stringify(data)});
   const element = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
-  const isRowValid = row => !row.issues?.length && row.send_status !== 'sent' && row.send_status !== 'processing' && (!('enabled' in row.values) || row.values.enabled.trim().toUpperCase() === 'YES');
+  const canAddress = row => !row.issues?.length && (!('enabled' in row.values) || String(row.values.enabled || '').trim().toUpperCase() === 'YES');
+  const isNotSent = row => canAddress(row) && (row.send_status === 'not_queued' || !row.send_status);
+  const isPendingRow = row => canAddress(row) && (row.send_status === 'pending' || row.send_status === 'processing');
+  const isFailedRow = row => canAddress(row) && row.send_status === 'failed';
+  const isRowValid = isNotSent;
+  const pendingSendIds = () => (records || []).filter(row => canAddress(row) && row.send_status === 'pending').map(row => row.record_id);
+  const failedSendIds = () => (records || []).filter(isFailedRow).map(row => row.record_id);
   const rowMatchesFilter = (row, filter) => {
     if (!filter) return true;
     if (filter === 'issues') return row.issues.length > 0;
-    if (filter === 'ready') return isRowValid(row);
+    if (filter === 'ready') return isNotSent(row);
+    if (filter === 'pending') return isPendingRow(row);
+    if (filter === 'failed') return isFailedRow(row);
     return row.send_status === filter;
   };
   const syncPill = (label) => {
@@ -43,6 +71,10 @@
     const list = $('#sheet-sources');
     if (!list) return;
     list.replaceChildren();
+    const countBadge = document.getElementById('saved-sheet-count-badge');
+    if (countBadge) {
+      countBadge.textContent = items.length === 1 ? '1 source' : `${items.length} sources`;
+    }
     if (!items.length) {
       list.innerHTML = `<div class="empty" style="padding:28px 16px;text-align:center"><p class="muted">No sheets found. Add a Google Sheet link or upload a spreadsheet below.</p></div>`;
       return;
@@ -66,11 +98,13 @@
             <div class="sheet-source-title-row">
               <strong class="sheet-source-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
               ${badgeHtml}
+              ${sheetMode() === 'whatsapp' ? '<span class="badge badge-ready">• Ready</span>' : ''}
             </div>
             <div class="sheet-source-meta">
               <span>Tab: <strong>${escapeHtml(item.tab_title || (item.sheet_id === 0 ? 'First tab' : (String(item.sheet_id).length > 5 ? 'Tab ID: ' + item.sheet_id : 'Tab #' + item.sheet_id)))}</strong></span>
               <span class="meta-dot">·</span>
               <span>Header row: <strong>${item.header_row}</strong></span>
+              ${sheetMode() === 'whatsapp' ? '<span class="meta-dot">·</span><span class="sheet-meta-ready">Mapped to Phone &amp; Message</span>' : ''}
             </div>
           </div>
         </div>
@@ -94,7 +128,7 @@
         e.stopPropagation();
         if (confirm(`Remove "${item.title}" from your saved sheets?`)) {
           busy(deleteBtn, async () => {
-            await api(`sheets/${item.id}`, { method: 'DELETE' });
+            await api(sheetApi(item.id), { method: 'DELETE' });
             notice(`Sheet source "${item.title}" removed.`);
             await window.loadSheets();
           });
@@ -105,12 +139,66 @@
     }
   }
 
+  function applySheetChrome() {
+    const wa = sheetMode() === 'whatsapp';
+    const title = document.querySelector('#sheets .title-row h1');
+    const intro = document.querySelector('#sheets .title-row p');
+    const eyebrow = document.querySelector('#sheets .title-row .eyebrow');
+    const headIcon = document.querySelector('#sheets .wa-sheets-head-icon');
+    if (headIcon) headIcon.style.display = wa ? 'flex' : 'none';
+    if (title) title.textContent = wa ? 'WhatsApp sheets' : 'Your sheets';
+    if (intro) {
+      if (wa) {
+        const count = allSources.length;
+        const countTxt = count === 0 ? 'No active sheets' : (count === 1 ? '1 active sheet' : `${count} active sheets`);
+        intro.innerHTML = `<span class="wa-live-dot-text"><span class="status-dot"></span><span id="wa-sheet-count-text">${countTxt}</span></span> &middot; <span>Sync with live Google Sheets or Excel</span> &middot; <span>Write-back enabled</span>`;
+      } else {
+        intro.textContent = 'Upload a spreadsheet or connect Google Sheets to manage your records.';
+      }
+    }
+    if (eyebrow) eyebrow.textContent = wa ? 'WHATSAPP DATA SOURCES' : 'YOUR DATA SOURCES';
+    const search = $('#sheet-search');
+    if (search) search.placeholder = wa ? 'Search ID, name, phone, or message' : 'Search ID, agency, email, or subject';
+    const idHead = $('#sheet-col-id');
+    const mid = $('#sheet-col-mid');
+    const next = $('#sheet-col-next');
+    const extra = $('#sheet-col-extra');
+    if (idHead) idHead.textContent = wa ? 'ID' : 'ID / agency';
+    if (extra) {
+      extra.textContent = wa ? 'Agency / Name' : 'Email';
+      extra.hidden = !wa;
+    }
+    if (mid) mid.textContent = wa ? 'Phone' : 'Email';
+    if (next) next.textContent = wa ? 'Message' : 'Subject';
+    const readyLabel = document.querySelector('#sheet-quick-tabs [data-tab-filter="ready"]');
+    if (readyLabel && readyLabel.firstChild) readyLabel.firstChild.nodeValue = wa ? 'Ready ' : 'Not sent ';
+  }
+
   window.loadSheets = async () => {
     try {
-      const [status, data] = await Promise.all([api('google/status'),api('sheets')]);
+      const mode = sheetMode();
+      if (mode !== sheetChannel) {
+        source = null;
+        openedId = null;
+        records = [];
+        selectedIds.clear();
+        sheetFilter = '';
+        $('#sheet-preview').hidden = true;
+        $('#sheets-directory').hidden = false;
+        document.getElementById('sheets')?.classList.remove('in-preview');
+        sheetChannel = mode;
+      }
+      applySheetChrome();
+      const [status, data] = await Promise.all([api('google/status'), api(sheetApi())]);
       uploadLimit = status.upload_limit || uploadLimit;
       allSources = data.sources || [];
       window.googleStatusConnected = status.connected;
+
+      const countEl = document.getElementById('wa-sheet-count-text');
+      if (countEl && sheetMode() === 'whatsapp') {
+        const count = allSources.length;
+        countEl.textContent = count === 0 ? 'No active sheets' : (count === 1 ? '1 active sheet' : `${count} active sheets`);
+      }
 
       const limitEl = $('#upload-limit');
       if (limitEl) limitEl.textContent = `Excel (.xlsx) or CSV, up to ${(uploadLimit / 1024 / 1024).toFixed(1).replace('.0','')} MB`;
@@ -137,37 +225,81 @@
       if (linkBtn) linkBtn.disabled = !status.connected;
 
       renderSourcesList(allSources, status.connected);
+      updateFilterChipCounts();
 
       const routeRaw = (location.hash || '').replace(/^#/, '');
       const routeBits = routeRaw.split('/');
-      const routeId = routeBits[0] === 'sheets' ? (routeBits[1] || '') : (localStorage.getItem('rsl_open_sheet') || '');
+      const hashToken = routeBits[0] === 'sheets' ? (routeBits[1] || '') : '';
+      const hashId = sheetMode() === 'whatsapp'
+        ? (hashToken.startsWith('wa-') ? hashToken.slice(3) : '')
+        : (hashToken.startsWith('wa-') ? '' : hashToken);
+      if (hashToken && !hashId) history.replaceState(null, '', '#sheets');
+      const routeId = (hashId && allSources.some(item => String(item.id) === String(hashId)))
+        ? hashId
+        : (localStorage.getItem(openSheetKey()) || '');
       const savedSource = routeId ? allSources.find(item => String(item.id) === String(routeId)) : null;
       if (savedSource && Number(openedId) !== Number(savedSource.id)) {
         try {
           await openSource(savedSource.id);
         } catch (err) {
-          localStorage.removeItem('rsl_open_sheet');
+          localStorage.removeItem(openSheetKey());
           openedId = null;
           $('#sheets-directory').hidden = false;
           $('#sheet-preview').hidden = true;
+          document.getElementById('sheets')?.classList.remove('in-preview');
           throw err;
         }
       } else if (!openedId) {
         $('#sheets-directory').hidden = false;
         $('#sheet-preview').hidden = true;
+        document.getElementById('sheets')?.classList.remove('in-preview');
       }
-      if (!status.connected) { if (!isUpload(source)) { $('#sheet-preview').hidden = true; $('#sheets-directory').hidden = false; } if (!uploadId) $('#sheet-map-form').hidden = true; }
+      if (!status.connected) { if (!isUpload(source)) { $('#sheet-preview').hidden = true; $('#sheets-directory').hidden = false; document.getElementById('sheets')?.classList.remove('in-preview'); } if (!uploadId && !mappingId) $('#sheet-map-form').hidden = true; }
     } catch(e) {notice(e.message,true);}
   };
 
-  $('#saved-sheet-search')?.addEventListener('input', e => {
-    const term = e.target.value.toLowerCase().trim();
-    if (!term) {
-      renderSourcesList(allSources, window.googleStatusConnected);
-      return;
+  let sourceFilterType = 'all';
+
+  function applySourceFilters() {
+    const searchInput = $('#saved-sheet-search');
+    const term = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    let filtered = allSources;
+    if (sourceFilterType === 'excel') {
+      filtered = filtered.filter(s => isUpload(s));
+    } else if (sourceFilterType === 'google') {
+      filtered = filtered.filter(s => !isUpload(s));
     }
-    const filtered = allSources.filter(s => (s.title || '').toLowerCase().includes(term));
+    if (term) {
+      filtered = filtered.filter(s => (s.title || '').toLowerCase().includes(term));
+    }
     renderSourcesList(filtered, window.googleStatusConnected);
+    updateFilterChipCounts();
+  }
+
+  function updateFilterChipCounts() {
+    const total = allSources.length;
+    const excelCount = allSources.filter(s => isUpload(s)).length;
+    const googleCount = allSources.filter(s => !isUpload(s)).length;
+    const chips = document.querySelectorAll('#sheet-source-filter-chips .sheet-filter-chip');
+    chips.forEach(chip => {
+      const type = chip.dataset.type;
+      if (type === 'all') chip.textContent = `All (${total})`;
+      else if (type === 'excel') chip.textContent = `Excel (${excelCount})`;
+      else if (type === 'google') chip.textContent = `Google (${googleCount})`;
+    });
+  }
+
+  document.querySelectorAll('#sheet-source-filter-chips .sheet-filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#sheet-source-filter-chips .sheet-filter-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      sourceFilterType = chip.dataset.type || 'all';
+      applySourceFilters();
+    });
+  });
+
+  $('#saved-sheet-search')?.addEventListener('input', () => {
+    applySourceFilters();
   });
 
   const dropzone = $('#dropzone-box');
@@ -226,7 +358,7 @@
       mappingId = null;
       savedMapping = null;
       $('#sheet-tab').disabled = false;
-      $('#sheet-header').value = file.name.toLowerCase().endsWith('.csv') ? 1 : 6;
+      $('#sheet-header').value = (file.name.toLowerCase().endsWith('.csv') || sheetMode() === 'whatsapp') ? 1 : 6;
       displayTabs(data.metadata);
       $('#sheet-map-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
       notice('File uploaded! Select tab and header row, then map the columns.');
@@ -301,8 +433,12 @@
       `;
     }
 
-    const requiredKeys = ['id', 'email', 'subject', 'body'];
-    const optionalKeys = ['name', 'link', 'cc', 'bcc', 'enabled'];
+    const wa = sheetMode() === 'whatsapp';
+    const labels = activeFields();
+    const headerAliases = activeAliases();
+    const requiredKeys = wa ? ['phone', 'message'] : ['id', 'email', 'subject', 'body'];
+    const optionalKeys = wa ? ['id', 'name'] : ['name', 'link', 'cc', 'bcc', 'enabled'];
+    const followKeys = wa ? [] : ['followup1_subject', 'followup1_body', 'followup2_subject', 'followup2_body'];
 
     const createFieldCard = (key, label, isRequired) => {
       const card = element('div', undefined, 'mapping-field-card' + (isRequired ? ' is-required' : ''));
@@ -324,7 +460,7 @@
         select.append(option);
       }
 
-      const autoValue = savedMapping?.[key] || headers.find(header => aliases[key].includes(header.toLowerCase())) || '';
+      const autoValue = savedMapping?.[key] || headers.find(header => (headerAliases[key] || []).includes(header.toLowerCase())) || '';
       select.value = autoValue;
       if (mappingId && key === 'id') select.disabled = true;
 
@@ -339,16 +475,24 @@
     };
 
     const reqSection = element('div', undefined, 'mapping-section');
-    reqSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill required">1</span> Mandatory Email Fields (Required to dispatch)</div><div class="mapping-section-grid"></div>`;
+    reqSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill required">1</span> ${wa ? 'Phone and WhatsApp message' : 'Mandatory Email Fields (Required to dispatch)'}</div><div class="mapping-section-grid"></div>`;
     const reqGrid = reqSection.querySelector('.mapping-section-grid');
-    requiredKeys.forEach(key => reqGrid.append(createFieldCard(key, fields[key], true)));
+    requiredKeys.forEach(key => reqGrid.append(createFieldCard(key, labels[key], true)));
 
     const optSection = element('div', undefined, 'mapping-section');
-    optSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill optional">2</span> Optional Parameters (Name, Drive link, CC, BCC, Send Enabled)</div><div class="mapping-section-grid"></div>`;
+    optSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill optional">2</span> ${wa ? 'Optional fields (Record ID, agency name)' : 'Optional Parameters (Name, Drive link, CC, BCC, Send Enabled)'}</div><div class="mapping-section-grid"></div>`;
     const optGrid = optSection.querySelector('.mapping-section-grid');
-    optionalKeys.forEach(key => optGrid.append(createFieldCard(key, fields[key], false)));
+    optionalKeys.forEach(key => optGrid.append(createFieldCard(key, labels[key], false)));
 
-    $('#sheet-mappings').append(reqSection, optSection);
+    const sections = [reqSection, optSection];
+    if (followKeys.length) {
+      const followSection = element('div', undefined, 'mapping-section');
+      followSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill optional">3</span> Follow-up mails (subject and message for each step)</div><div class="mapping-section-grid"></div>`;
+      const followGrid = followSection.querySelector('.mapping-section-grid');
+      followKeys.forEach(key => followGrid.append(createFieldCard(key, labels[key], false)));
+      sections.push(followSection);
+    }
+    $('#sheet-mappings').append(...sections);
 
     const actionsBar = $('#mapping-actions');
     if (actionsBar) actionsBar.hidden = false;
@@ -368,11 +512,31 @@
 
   $('#sheet-map-form').addEventListener('submit', event => { event.preventDefault(); busy(event.submitter, async () => {
     const mapping = {}; $('#sheet-mappings').querySelectorAll('select').forEach(select => mapping[select.name] = select.value);
-    const data = await post(mappingId ? `sheets/${mappingId}/mapping` : 'sheets', {...sourceInput(),sheet_id:Number($('#sheet-tab').value),header_row:Number($('#sheet-header').value),mapping});
+    const data = await post(mappingId ? sheetApi(`${mappingId}/mapping`) : sheetApi(), {...sourceInput(),sheet_id:Number($('#sheet-tab').value),header_row:Number($('#sheet-header').value),mapping});
     $('#sheet-map-form').hidden = true; await window.loadSheets(); await openSource(data.id); notice('Sheet source saved.');
   }); });
 
   function updateBatchBar() {
+    if (sheetMode() === 'whatsapp') {
+      const waBar = $('#batch-actions');
+      const waBulk = $('#sheet-bulk-send-btn');
+      const waBulkLabel = $('#sheet-bulk-send-label');
+      if (waBar) waBar.hidden = true;
+      const readyRecords = (records || []).filter(r => !r.issues?.length);
+      const readyCount = readyRecords.length;
+      if (waBulk && waBulkLabel) {
+        if (readyCount > 0) {
+          waBulk.hidden = false;
+          waBulk.style.display = 'inline-flex';
+          waBulkLabel.textContent = `Send all ${readyCount} ready`;
+        } else {
+          waBulk.hidden = true;
+          waBulk.style.display = 'none';
+        }
+      }
+      rememberSheetChrome();
+      return;
+    }
     const bar = $('#batch-actions');
     const count = selectedIds.size;
     const readyRecords = (records || []).filter(isRowValid);
@@ -392,9 +556,15 @@
       if (count > 0) {
         bulkBtn.hidden = false;
         bulkLabel.textContent = `Send ${count} Selected`;
-      } else if (readyCount > 0) {
+      } else if ((sheetFilter === 'pending' || sheetFilter === '' || sheetFilter === 'ready') && pendingSendIds().length > 0 && (sheetFilter === 'pending' || readyCount === 0)) {
         bulkBtn.hidden = false;
-        bulkLabel.textContent = `Send All ${readyCount} Ready`;
+        bulkLabel.textContent = `Send ${pendingSendIds().length} pending`;
+      } else if ((sheetFilter === 'failed' || ((sheetFilter === '' || sheetFilter === 'ready') && readyCount === 0 && pendingSendIds().length === 0)) && failedSendIds().length > 0) {
+        bulkBtn.hidden = false;
+        bulkLabel.textContent = `Send ${failedSendIds().length} failed again`;
+      } else if (readyCount > 0 && sheetFilter !== 'pending' && sheetFilter !== 'failed' && sheetFilter !== 'sent' && sheetFilter !== 'issues') {
+        bulkBtn.hidden = false;
+        bulkLabel.textContent = `Send all ${readyCount} not sent`;
       } else {
         bulkBtn.hidden = true;
       }
@@ -402,54 +572,275 @@
     rememberSheetChrome();
   }
 
+  let fillingWaSender = false;
+
+  function sheetDeviceIds(sheet) {
+    if (Array.isArray(sheet?.device_ids) && sheet.device_ids.length) return sheet.device_ids.filter(Boolean);
+    return sheet?.device_id ? [sheet.device_id] : [];
+  }
+
+  function phoneBoxes() {
+    return [...document.querySelectorAll('#wa-sheet-phones input[data-phone-id]')];
+  }
+
+  function chosenPhoneIds() {
+    return phoneBoxes().filter((box) => box.checked).map((box) => box.value);
+  }
+
+  function phoneButtonText() {
+    const button = $('#wa-sheet-phone-btn');
+    const boxes = phoneBoxes();
+    const checked = boxes.filter((box) => box.checked);
+    if (!button) return;
+    let label = 'Choose phones';
+    if (!boxes.length) label = 'No phone is ready';
+    else if (checked.length === boxes.length) label = boxes.length === 1 ? 'All ready phones (1 active)' : `All ready phones (${boxes.length} active)`;
+    else if (checked.length === 1) label = checked[0].dataset.label || '1 phone';
+    else if (checked.length) label = `${checked.length} phones`;
+    button.innerHTML = `<span>${escapeHtml(label)}</span><svg class="icon icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>`;
+  }
+
+  async function fillWaSender(sheet) {
+    const box = $('#wa-sheet-phones');
+    if (!box || sheetMode() !== 'whatsapp') return;
+    fillingWaSender = true;
+    box.replaceChildren();
+    let roster = {devices: []};
+    try { roster = await api('whatsapp/device'); } catch (error) { notice(error.message, true); }
+    const ready = (roster.devices || []).filter((device) => device.status === 'ready' || device.status === 'connected');
+    const labelFor = (device) => device.phone ? `${device.name} · ${device.phone}` : (device.name || 'Phone');
+    const useAll = (sheet?.sender_mode || 'all') !== 'pick';
+    const saved = new Set(sheetDeviceIds(sheet));
+    const allLabel = element('label', undefined, 'sheet-phone-option');
+    const allInput = element('input');
+    allInput.type = 'checkbox';
+    allInput.id = 'wa-sheet-phone-all';
+    allLabel.append(allInput, element('span', 'All ready phones'));
+    box.append(allLabel);
+    if (!ready.length) box.append(element('p', 'Pair a phone on Linked device.', 'sheet-phone-empty'));
+    for (const device of ready) {
+      const name = labelFor(device);
+      const row = element('label', undefined, 'sheet-phone-option');
+      const input = element('input');
+      input.type = 'checkbox';
+      input.value = device.id;
+      input.dataset.phoneId = device.id;
+      input.dataset.label = name;
+      input.checked = useAll || saved.has(device.id);
+      row.append(input, element('span', name));
+      box.append(row);
+    }
+    const boxes = phoneBoxes();
+    allInput.checked = boxes.length > 0 && boxes.every((item) => item.checked);
+    fillingWaSender = false;
+    phoneButtonText();
+  }
+
+  async function savePhoneChoice() {
+    const boxes = phoneBoxes();
+    const checked = boxes.filter((box) => box.checked).map((box) => box.value);
+    const mode = boxes.length && checked.length === boxes.length ? 'all' : 'pick';
+    if (mode === 'pick' && !checked.length) throw new Error('Choose at least one phone.');
+    await post(sheetApi(`${source.id}/sender`), {sender_mode: mode, device_ids: mode === 'all' ? [] : checked});
+    source.sender_mode = mode;
+    source.device_ids = mode === 'all' ? [] : checked;
+    source.device_id = checked[0] || null;
+    phoneButtonText();
+    paintCap();
+    notice(mode === 'all'
+      ? 'This sheet will send from every ready phone.'
+      : `This sheet will send from ${checked.length} phone${checked.length === 1 ? '' : 's'}.`);
+  }
+
+  $('#wa-sheet-phone-btn')?.addEventListener('click', () => {
+    const panel = $('#wa-sheet-phones');
+    const button = $('#wa-sheet-phone-btn');
+    if (!panel || !button) return;
+    panel.hidden = !panel.hidden;
+    button.setAttribute('aria-expanded', String(!panel.hidden));
+  });
+  document.addEventListener('click', (event) => {
+    const menu = document.querySelector('.sheet-phone-menu');
+    const panel = $('#wa-sheet-phones');
+    if (!menu || !panel || menu.contains(event.target)) return;
+    panel.hidden = true;
+    $('#wa-sheet-phone-btn')?.setAttribute('aria-expanded', 'false');
+  });
+  $('#wa-sheet-phones')?.addEventListener('change', (event) => {
+    if (fillingWaSender || !source?.id || sheetMode() !== 'whatsapp') return;
+    const boxes = phoneBoxes();
+    const all = $('#wa-sheet-phone-all');
+    if (event.target === all) {
+      boxes.forEach((box) => { box.checked = true; });
+      all.checked = true;
+    } else if (!chosenPhoneIds().length) {
+      event.target.checked = true;
+    }
+    if (all) all.checked = boxes.length > 0 && boxes.every((box) => box.checked);
+    const noticeEl = $('#notice');
+    if (noticeEl) noticeEl.hidden = true;
+    phoneButtonText();
+    paintCap();
+    busy($('#wa-sheet-phone-btn'), savePhoneChoice);
+  });
+
   async function openSource(id, preserveSelections = false) {
     const sameSource = Number(source?.id) === Number(id);
     openedId = Number(id);
     if (!preserveSelections) selectedIds.clear();
     const noticeEl = $('#notice');
     if (noticeEl) noticeEl.hidden = true;
-    const data = await api(`sheets/${id}`);
+    const data = await api(sheetApi(id));
     if (openedId !== Number(id)) return;
     source = data.source; records = data.records;
-    if (!sameSource) { page = 0; sheetFilter = ''; $('#sheet-search').value = ''; $('#sheet-status').value = ''; }
+    if (!sameSource) {
+      page = 0;
+      sheetFilter = '';
+      const search = $('#sheet-search');
+      const status = $('#sheet-status');
+      if (search) search.value = '';
+      if (status) status.value = '';
+    }
     const tabTitle = data.tab?.title || 'Sheet';
     $('#source-title').textContent = tabTitle;
     const fileName = source.title && source.title !== tabTitle ? source.title : '';
-    $('#source-summary').textContent = [fileName, `${records.length} records`, `Header row ${source.header_row}`].filter(Boolean).join(' · ');
-    syncPill(isUpload(source) ? 'Uploaded file' : 'Live Sync Active');
+    const iconEl = $('#sheet-preview-icon');
+    if (iconEl) {
+      if (isUpload(source)) {
+        iconEl.className = 'sheet-preview-badge-icon excel';
+        iconEl.innerHTML = '<svg viewBox="0 0 24 24" class="sheet-type-svg"><path fill="#107C41" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/><path fill="#fff" d="M15.5 17l-2.4-4.5 2.3-4.5h-2.1l-1.3 3.1-1.3-3.1H8.6l2.3 4.5-2.4 4.5h2.1l1.4-3.3 1.4 3.3z"/></svg>';
+      } else {
+        iconEl.className = 'sheet-preview-badge-icon google';
+        iconEl.innerHTML = '<svg viewBox="0 0 24 24" class="sheet-type-svg"><path fill="#0F9D58" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/><path fill="#fff" d="M9 7h6v2H9zm0 4h6v2H9zm0 4h6v2H9z"/></svg>';
+      }
+    }
+    const countBadge = $('#source-badge-count');
+    if (countBadge) countBadge.textContent = `${records.length} records`;
+    if (sheetMode() === 'whatsapp') {
+      const parts = [fileName, `Header row ${source.header_row}`];
+      parts.push(isUpload(source) ? 'Edits save to uploaded copy' : 'Edits save to Google Sheets');
+      $('#source-summary').textContent = parts.filter(Boolean).join(' · ');
+      $('#source-edit-note').textContent = '';
+      $('#source-edit-note').style.display = 'none';
+      syncPill(isUpload(source) ? 'Uploaded file (Excel)' : 'Live Sync Active');
+    } else {
+      $('#source-summary').textContent = [fileName, `${records.length} records`, `Header row ${source.header_row}`].filter(Boolean).join(' · ');
+      $('#source-edit-note').textContent = isUpload(source)
+        ? 'Edits save to the uploaded copy in this application. Your original file and existing queued emails stay unchanged.'
+        : 'Edits save to Google Sheets. Already queued or sent emails keep their original content.';
+      $('#source-edit-note').style.display = '';
+      syncPill(isUpload(source) ? 'Uploaded file' : 'Live Sync Active');
+    }
     $('#open-sheet').href = `https://docs.google.com/spreadsheets/d/${source.spreadsheet_id}/edit#gid=${source.sheet_id}`;
     $('#open-sheet').hidden = isUpload(source);
-    $('#source-edit-note').textContent = isUpload(source) ? 'Edits save to the uploaded copy in this application. Your original file and existing queued emails stay unchanged.' : 'Edits save to Google Sheets. Already queued or sent emails keep their original content.';
+    const replaceBtn = $('#sheet-replace');
+    if (replaceBtn) replaceBtn.hidden = !isUpload(source);
+    const mappingBtn = $('#source-mapping');
+    if (mappingBtn) mappingBtn.hidden = false;
     $('#sheets-directory').hidden = true;
     $('#sheet-preview').hidden = false;
+    document.getElementById('sheets')?.classList.add('in-preview');
     try {
-      localStorage.setItem('rsl_open_sheet', String(id));
-      const nextHash = '#sheets/' + id;
+      localStorage.setItem(openSheetKey(), String(id));
+      const nextHash = '#sheets/' + (sheetMode() === 'whatsapp' ? 'wa-' : '') + id;
       if (location.hash !== nextHash) history.replaceState(null, '', nextHash);
     } catch (e) {}
     window.scrollTo({top: 0, behavior: 'smooth'});
     renderRows();
     updateBatchBar();
+    const isWa = sheetMode() === 'whatsapp';
+    document.querySelectorAll('#sheet-preview .sheet-wa-only').forEach(el => { el.hidden = !isWa; });
+    document.querySelectorAll('#sheet-preview .sheet-email-only').forEach(el => { el.hidden = isWa; });
+    if (isWa) {
+      await fillWaSender(source);
+      paintSchedule(source);
+    }
   }
+
+  let fillingSchedule = false;
+
+  function paintSchedule(sheet) {
+    const scheduleEl = document.querySelector('#sheet-preview .sheet-schedule');
+    if (scheduleEl) scheduleEl.hidden = sheetMode() !== 'whatsapp';
+    const date = $('#wa-sheet-date');
+    const delay = $('#wa-sheet-delay');
+    if (!date || !delay || sheetMode() !== 'whatsapp') return;
+    fillingSchedule = true;
+    if (!delay.options.length) {
+      const blank = element('option', 'Minutes');
+      blank.value = '';
+      delay.append(blank);
+      for (let minutes = 1; minutes <= 30; minutes += 1) {
+        const option = element('option', `${minutes} minute${minutes === 1 ? '' : 's'}`);
+        option.value = String(minutes);
+        delay.append(option);
+      }
+    }
+    date.value = sheet?.start_date || '';
+    delay.value = sheet?.delay_minutes ? String(sheet.delay_minutes) : '';
+    fillingSchedule = false;
+    paintCap();
+  }
+
+  function paintCap() {
+    const cap = $('#wa-sheet-cap');
+    if (!cap || sheetMode() !== 'whatsapp') return;
+    const ready = (records || []).filter((row) => !row.issues?.length).length;
+    const count = chosenPhoneIds().length;
+    const daily = count * 20;
+    const days = ready && daily ? Math.ceil(ready / daily) : 0;
+
+    if (!count) {
+      cap.innerHTML = '<span class="wa-cap-stat">⚡ <strong>0 msgs / day</strong></span> &middot; <span>Pick a ready phone to schedule dispatch</span>';
+      cap.title = 'Pick a ready phone to schedule dispatch';
+      return;
+    }
+
+    const dispatchText = `${ready} rows dispatch across <strong>${days || 1} days</strong>`;
+    cap.innerHTML = `<span class="wa-cap-stat">⚡ <strong>${daily} msgs / day / phone</strong></span> &middot; <span>${dispatchText}</span> &middot; <span class="wa-cap-note">Country code preserved</span>`;
+    cap.title = `${daily} msgs / day / phone · ${ready} rows dispatch across ${days || 1} days · Country code preserved`;
+  }
+
+  async function saveSchedule() {
+    if (!source?.id || fillingSchedule || sheetMode() !== 'whatsapp') return;
+    const startDate = $('#wa-sheet-date')?.value || '';
+    const delayRaw = $('#wa-sheet-delay')?.value || '';
+    const delayMinutes = delayRaw === '' ? null : Number(delayRaw);
+    await post(sheetApi(`${source.id}/schedule`), {start_date: startDate, delay_minutes: delayMinutes});
+    source.start_date = startDate || null;
+    source.delay_minutes = delayMinutes;
+    paintCap();
+    notice('Schedule saved for the ready phones.');
+  }
+
+  $('#wa-sheet-date')?.addEventListener('change', (event) => {
+    if (fillingSchedule || !source?.id) return;
+    busy(event.currentTarget, saveSchedule);
+  });
+  $('#wa-sheet-delay')?.addEventListener('change', (event) => {
+    if (fillingSchedule || !source?.id) return;
+    busy(event.currentTarget, saveSchedule);
+  });
 
   $('#sheet-back-btn')?.addEventListener('click', () => {
     $('#sheet-preview').hidden = true;
     $('#sheets-directory').hidden = false;
+    document.getElementById('sheets')?.classList.remove('in-preview');
     source = null;
     openedId = null;
     selectedIds.clear();
     try {
-      localStorage.removeItem('rsl_open_sheet');
+      localStorage.removeItem(openSheetKey());
       if ((location.hash || '').startsWith('#sheets/')) history.replaceState(null, '', '#sheets');
     } catch (e) {}
     window.scrollTo({top: 0, behavior: 'smooth'});
   });
 
   function renderRows() {
-    const size = Number($('#sheet-size').value), term = $('#sheet-search').value.trim().toLowerCase(), filter = sheetFilter;
+    const sizeEl = $('#sheet-size'), searchEl = $('#sheet-search');
+    const size = Number(sizeEl ? sizeEl.value : 10), term = (searchEl ? searchEl.value : '').trim().toLowerCase(), filter = sheetFilter;
     const filtered = records.filter(row => {
-      const matchesTerm = [row.record_id,row.values.name,row.values.email,row.values.subject].some(value => String(value || '').toLowerCase().includes(term));
-      return matchesTerm && rowMatchesFilter(row, filter);
+      return rowHaystack(row).some(value => value.includes(term)) && rowMatchesFilter(row, filter);
     });
 
     const pages = Math.max(1,Math.ceil(filtered.length / size)); page = Math.max(0,Math.min(page,pages - 1));
@@ -458,13 +849,17 @@
 
     // Update Quick Filter Tab counters and active state
     const allCount = records.length;
-    const readyCount = records.filter(isRowValid).length;
+    const readyCount = records.filter(isNotSent).length;
+    const pendingCount = records.filter(isPendingRow).length;
+    const failedCount = records.filter(isFailedRow).length;
     const sentCount = records.filter(r => r.send_status === 'sent').length;
     const issuesCount = records.filter(r => r.issues && r.issues.length > 0).length;
 
-    const cAll = $('#count-all-records'), cReady = $('#count-ready-records'), cSent = $('#count-sent-records'), cIssues = $('#count-issues-records');
+    const cAll = $('#count-all-records'), cReady = $('#count-ready-records'), cPending = $('#count-pending-records'), cFailed = $('#count-failed-records'), cSent = $('#count-sent-records'), cIssues = $('#count-issues-records');
     if (cAll) cAll.textContent = allCount;
     if (cReady) cReady.textContent = readyCount;
+    if (cPending) cPending.textContent = pendingCount;
+    if (cFailed) cFailed.textContent = failedCount;
     if (cSent) cSent.textContent = sentCount;
     if (cIssues) cIssues.textContent = issuesCount;
 
@@ -475,6 +870,7 @@
     document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.tabFilter || '') === filter);
     });
+    updateBatchBar();
 
     const validPageRecords = pageRecords.filter(isRowValid);
     const selectAll = $('#sheet-select-all');
@@ -501,12 +897,18 @@
       });
       chkCell.append(chk);
 
-      // ID / Agency cell with tight compact spacing
+      // ID / Agency cell in one line
       const id = element('td', undefined, 'cell-id-agency-td');
       const idWrap = element('div', undefined, 'cell-id-agency');
       const idVal = element('span', String(row.record_id || 'Missing ID'), 'sheet-id-val');
-      const agencyVal = element('span', String(row.values.name || ''), 'sheet-agency-val');
-      idWrap.append(idVal, agencyVal);
+      const agencyName = String(row.values.name || '').trim();
+      if (agencyName) {
+        const dot = element('span', '·', 'sheet-id-dot');
+        const agencyVal = element('span', agencyName, 'sheet-agency-val');
+        idWrap.append(idVal, dot, agencyVal);
+      } else {
+        idWrap.append(idVal);
+      }
       id.append(idWrap);
 
       const cleanEmail = String(row.values.email || '').replace(/^[`'"\s\u00a0\u200b]+|[`'"\s\u00a0\u200b]+$/g, '');
@@ -521,7 +923,7 @@
           statusWrap.append(element('span', issue, 'badge issue'));
         }
       } else if (row.send_status === 'not_queued') {
-        statusWrap.append(element('span', 'Ready', 'badge ready'));
+        statusWrap.append(element('span', 'Not sent', 'badge ready'));
       } else {
         statusWrap.append(element('span', row.send_status.replaceAll('_',' '), `badge ${row.send_status}`));
       }
@@ -533,6 +935,18 @@
       edit.disabled = !row.editable;
       edit.addEventListener('click', () => editRow(row));
       actions.append(edit);
+
+      if (sheetMode() === 'whatsapp') {
+        const idCell = element('td', String(row.record_id || '—'), 'cell-wa-id');
+        const nameCell = element('td', String(row.values.name || '—'), 'cell-wa-name');
+        nameCell.title = String(row.values.name || '');
+        const phoneCell = element('td', String(row.values.phone || '—'), 'cell-wa-phone');
+        const messageCell = element('td', String(row.values.message || '—'), 'cell-wa-message');
+        messageCell.title = String(row.values.message || '');
+        tr.append(idCell, nameCell, phoneCell, messageCell, status, actions);
+        $('#sheet-rows').append(tr);
+        continue;
+      }
 
       if (row.email_id) {
         const details = element('button', 'View email', 'sheet-btn-action');
@@ -598,10 +1012,10 @@
   // Select all checkbox handler
   $('#sheet-select-all')?.addEventListener('change', event => {
     const checked = event.target.checked;
-    const size = Number($('#sheet-size').value), term = $('#sheet-search').value.trim().toLowerCase(), filter = sheetFilter;
+    const sizeEl = $('#sheet-size'), searchEl = $('#sheet-search');
+    const size = Number(sizeEl ? sizeEl.value : 10), term = (searchEl ? searchEl.value : '').trim().toLowerCase(), filter = sheetFilter;
     const filtered = records.filter(row => {
-      const matchesTerm = [row.record_id,row.values.name,row.values.email,row.values.subject].some(value => String(value || '').toLowerCase().includes(term));
-      return matchesTerm && rowMatchesFilter(row, filter);
+      return rowHaystack(row).some(value => value.includes(term)) && rowMatchesFilter(row, filter);
     });
     const pageRecords = filtered.slice(page * size, (page + 1) * size);
     for (const r of pageRecords) {
@@ -649,25 +1063,27 @@
       if (titleEl) titleEl.textContent = title || 'Confirm Email Dispatch';
       if (descEl) descEl.textContent = desc || 'Ready to send via configured SMTP.';
 
-      const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
+      const accounts = (window.currentMailAccounts && window.currentMailAccounts.length > 0)
+        ? window.currentMailAccounts
+        : [{ id: 1, name: 'RSL Communications', email: 'ray@rslsolution.com' }];
       const confirmSelect = $('#send-confirm-sender-select');
       if (confirmSelect) {
-        if (!confirmSelect.options || confirmSelect.options.length === 0) {
-          const accounts = (window.currentMailAccounts && window.currentMailAccounts.length > 0)
-            ? window.currentMailAccounts
-            : (activeSender ? [activeSender] : [{ id: 1, name: 'RSL Communications', email: 'ray@rslsolution.com' }]);
-          confirmSelect.replaceChildren();
-          for (const acc of accounts) {
-            const opt = document.createElement('option');
-            opt.value = acc.id;
-            opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
-            confirmSelect.append(opt);
-          }
+        // Always repopulate so the dropdown is never blank when the dialog opens
+        const prevVal = confirmSelect.value;
+        confirmSelect.replaceChildren();
+        for (const acc of accounts) {
+          const opt = document.createElement('option');
+          opt.value = String(acc.id);
+          opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+          confirmSelect.append(opt);
         }
-        if (activeSender && activeSender.id) {
-          confirmSelect.value = String(activeSender.id);
-        }
+        // Restore previous selection or use the active sender
+        const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
+        const preferredId = (activeSender && activeSender.id) ? String(activeSender.id) : prevVal;
+        if (preferredId) confirmSelect.value = preferredId;
+        if (!confirmSelect.value && confirmSelect.options.length > 0) confirmSelect.selectedIndex = 0;
       }
+      const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
       const fromEl = $('#send-confirm-from');
       if (fromEl) {
         fromEl.textContent = activeSender ? (activeSender.name ? `${activeSender.name} <${activeSender.email}>` : activeSender.email) : 'ray@rslsolution.com';
@@ -771,6 +1187,8 @@
 
     let sent = 0;
     let failed = 0;
+    let already = 0;
+    let pending = 0;
     let remaining = total;
     batchCancelRequested = false;
 
@@ -810,8 +1228,15 @@
       if (logList.children.length > 25) logList.lastElementChild?.remove();
     };
 
+    const outcomeLine = () => {
+      const parts = [`${sent} sent`];
+      if (pending) parts.push(`${pending} still pending`);
+      if (failed) parts.push(`${failed} failed`);
+      if (already) parts.push(`${already} already sent`);
+      return parts.join(', ') + '.';
+    };
     const updateUI = () => {
-      const processed = sent + failed;
+      const processed = sent + failed + already + pending;
       const pct = Math.min(100, Math.round((processed / total) * 100));
       if (counterText) counterText.textContent = `${sent} / ${total} sent`;
       if (counterPercent) counterPercent.textContent = `${pct}%`;
@@ -846,11 +1271,17 @@
         const res = await post(`sheets/${source.id}/batch-send`, batchPayload);
         sent += (res.sent || 0);
         failed += (res.failed || 0);
-        remaining = Math.max(0, total - (sent + failed));
-        addLog(`✓ Batch ${i + 1}/${chunks.length}: ${res.sent} sent${res.failed ? `, ${res.failed} skipped` : ''}`);
+        already += (res.already_sent || 0);
+        pending += (res.pending || 0);
+        remaining = Math.max(0, total - (sent + failed + already + pending));
+        const bits = [`${res.sent || 0} sent`];
+        if (res.pending) bits.push(`${res.pending} still pending`);
+        if (res.failed) bits.push(`${res.failed} failed`);
+        if (res.already_sent) bits.push(`${res.already_sent} already sent`);
+        addLog(`✓ Batch ${i + 1}/${chunks.length}: ${bits.join(', ')}`);
       } catch (err) {
-        failed += chunk.length;
-        remaining = Math.max(0, total - (sent + failed));
+        pending += chunk.length;
+        remaining = Math.max(0, total - (sent + failed + already + pending));
         addLog(`❌ Batch ${i + 1} error: ${err.message}`, 'error');
       }
       updateUI();
@@ -858,7 +1289,7 @@
 
     // Finalize modal
     if (titleEl) titleEl.textContent = batchCancelRequested ? 'Batch Dispatch Paused' : '🎉 Dispatch Complete!';
-    if (subtitleEl) subtitleEl.textContent = `${sent} email${sent === 1 ? '' : 's'} successfully sent${failed ? `, ${failed} skipped or failed` : ''}.`;
+    if (subtitleEl) subtitleEl.textContent = outcomeLine();
     if (badgeEl) badgeEl.textContent = batchCancelRequested ? 'Stopped' : '✓ Completed';
     if (cancelBtn) cancelBtn.hidden = true;
     if (doneBtn) doneBtn.hidden = false;
@@ -878,19 +1309,43 @@
     performBatchSend(Array.from(selectedIds));
   });
 
-  $('#sheet-bulk-send-btn')?.addEventListener('click', () => {
+  $('#sheet-bulk-send-btn')?.addEventListener('click', async () => {
+    if (sheetMode() === 'whatsapp') {
+      const readyRecords = (records || []).filter(r => !r.issues?.length);
+      const readyCount = readyRecords.length;
+      const phoneCount = chosenPhoneIds().length;
+      if (!phoneCount) {
+        notice('Please pick at least one ready phone in "Send from".', true);
+        return;
+      }
+      if (!readyCount) {
+        notice('No ready records to dispatch.', true);
+        return;
+      }
+      await saveSchedule();
+      notice(`Campaign ready: ${readyCount} rows scheduled for WhatsApp dispatch.`);
+      return;
+    }
     if (selectedIds.size > 0) {
       performBatchSend(Array.from(selectedIds));
-    } else {
-      const readyIds = (records || []).filter(isRowValid).map(r => r.record_id);
-      performBatchSend(readyIds);
+      return;
     }
+    if (sheetFilter === 'pending' || ((sheetFilter === '' || sheetFilter === 'ready') && pendingSendIds().length > 0 && (records || []).filter(isNotSent).length === 0)) {
+      performBatchSend(pendingSendIds());
+      return;
+    }
+    if (sheetFilter === 'failed' || ((sheetFilter === '' || sheetFilter === 'ready') && failedSendIds().length > 0 && pendingSendIds().length === 0 && (records || []).filter(isNotSent).length === 0)) {
+      performBatchSend(failedSendIds());
+      return;
+    }
+    performBatchSend((records || []).filter(isNotSent).map(row => row.record_id));
   });
 
   document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       sheetFilter = btn.dataset.tabFilter || '';
-      $('#sheet-status').value = '';
+      const status = $('#sheet-status');
+      if (status) status.value = '';
       page = 0;
       renderRows();
     });
@@ -899,13 +1354,29 @@
   const savedSheetSize = localStorage.getItem('rsl_sheet_size');
   if (savedSheetSize && $('#sheet-size')) $('#sheet-size').value = savedSheetSize;
 
-  for (const [selector,event] of [['#sheet-search','input'],['#sheet-status','change'],['#sheet-size','change']]) $(selector).addEventListener(event, () => {
+  for (const [selector,event] of [['#sheet-search','input'],['#sheet-status','change'],['#sheet-size','change']]) $(selector)?.addEventListener(event, () => {
     if (selector === '#sheet-size') localStorage.setItem('rsl_sheet_size', $('#sheet-size').value);
     if (selector === '#sheet-status') sheetFilter = $('#sheet-status').value;
     page = 0; renderRows();
   });
   $('#sheet-prev').addEventListener('click', () => {page--;renderRows();}); $('#sheet-next').addEventListener('click', () => {page++;renderRows();});
   $('#refresh-sheet').addEventListener('click', event => busy(event.currentTarget, () => openSource(source.id, true)));
+  $('#sheet-download')?.addEventListener('click', event => busy(event.currentTarget, async () => {
+    if (!source?.id) return;
+    const response = await fetch('/api/sheets/' + source.id + '/download', { credentials: 'same-origin' });
+    if (!response.ok) {
+      let message = 'Could not download this sheet.';
+      try { message = (await response.json()).error || message; } catch (e) {}
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const name = (response.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'sheet-status.csv';
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }));
   $('#reset-processing-btn')?.addEventListener('click', event => busy(event.currentTarget, async () => {
     if (!source || !source.id) return;
     const res = await post(`sheets/${source.id}/reset-processing`);
@@ -913,12 +1384,37 @@
     notice(res.recovered > 0 ? `Reset ${res.recovered} email(s) from processing back to ready.` : 'All processing emails have been unlocked.');
   }));
 
+  $('#sheet-replace')?.addEventListener('click', () => $('#sheet-replace-file')?.click());
+  $('#sheet-replace-file')?.addEventListener('change', event => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file || !source?.id) return;
+    if (file.size > uploadLimit) {
+      notice(`Choose an Excel or CSV file within the ${(uploadLimit / 1024 / 1024).toFixed(1)} MB upload limit.`, true);
+      return;
+    }
+    busy($('#sheet-replace'), async () => {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch('/api/sheets/' + source.id + '/replace', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: form });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not update this sheet.');
+      await openSource(source.id, true);
+      notice('File updated on this sheet. Sent mail is unchanged. Open Column mapping to map the follow-up columns.');
+    });
+  });
+
   $('#source-mapping').addEventListener('click', event => busy(event.currentTarget, async () => {
+    if (!source?.id) return;
+    const form = $('#sheet-map-form');
+    const preview = $('#sheet-preview');
+    if (form && preview) preview.prepend(form);
     mappingId = source.id; savedMapping = source.mapping;
     uploadId = isUpload(source) ? source.spreadsheet_id : null;
     $('#sheet-url').value = isUpload(source) ? '' : `https://docs.google.com/spreadsheets/d/${source.spreadsheet_id}/edit`;
     $('#sheet-header').value = source.header_row;
-    await readTabs($('#sheet-url').value, source.sheet_id); $('#sheet-tab').disabled = true; await readHeaders(); $('#sheet-map-form').scrollIntoView({block:'start'});
+    await readTabs($('#sheet-url').value, source.sheet_id); $('#sheet-tab').disabled = true; await readHeaders();
+    form?.scrollIntoView({block:'start'});
   }));
 
   function editRow(row) {
@@ -933,10 +1429,10 @@
     else recordNote.textContent = 'Only changed fields are saved. Keep this sheet free of simultaneous edits while saving.';
     $('#edit-record-id').textContent = `Record ${row.record_id} · Row ${row.row}`;
     for (const [key,value] of Object.entries(row.values)) {
-      if (key === 'id') continue;
-      const label = element('label',fields[key]); const input = element(key === 'body' ? 'textarea' : 'input');
-      input.name = key; input.value = value; input.disabled = row.formulas.includes(key);
-      if (key === 'body') input.addEventListener('input', () => fitEditorBody(input));
+      if (key === 'id' || key === 'email') continue;
+      const label = element('label', activeFields()[key] || key); const input = element(key === 'body' || key === 'message' ? 'textarea' : 'input');
+      input.name = key; input.value = value; input.disabled = (row.formulas || []).includes(key);
+      if (key === 'body' || key === 'message') input.addEventListener('input', () => fitEditorBody(input));
       label.append(input); if (input.disabled) label.append(element('small','Formula: edit in the original spreadsheet.')); $('#edit-fields').append(label);
     }
     $('#sheet-editor').showModal();
@@ -958,7 +1454,7 @@
       Object.assign(editing.row.values, changes);
       renderRows();
 
-      await post(`sheets/${editing.sourceId}/edit`,{record_id:editing.row.record_id,version:editing.row.version,changes});
+      await post(sheetApi(`${editing.sourceId}/edit`),{record_id:editing.row.record_id,version:editing.row.version,changes});
       $('#sheet-editor').close();
       await openSource(editing.sourceId, true);
       notice(editing.uploaded ? 'Changes saved to the uploaded copy.' : 'Changes saved to Google Sheets.');
@@ -977,7 +1473,7 @@
     if ($('#sheet-editor').open) return; // Do not interrupt modal editing
     try {
       isSilentlySyncing = true;
-      const data = await api(`sheets/${source.id}`);
+      const data = await api(sheetApi(source.id));
       if (openedId !== Number(source.id)) return;
       records = data.records; source = data.source;
       renderRows();

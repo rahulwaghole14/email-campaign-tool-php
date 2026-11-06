@@ -268,7 +268,7 @@ final class ImapClient
         $search = trim((string) ($query['search'] ?? ''));
         $status = trim((string) ($query['status'] ?? ''));
         $category = trim((string) ($query['category'] ?? 'primary'));
-        if (!in_array($category, ['primary', 'bounces', 'all'], true)) {
+        if (!in_array($category, ['primary', 'linkedin', 'bounces', 'all'], true)) {
             $category = 'primary';
         }
 
@@ -276,9 +276,14 @@ final class ImapClient
         $params = [];
 
         $bounceSql = "(LOWER(from_email) LIKE '%mailer-daemon%' OR LOWER(from_email) LIKE '%postmaster%' OR LOWER(from_name) LIKE '%mail delivery%' OR LOWER(subject) LIKE '%undelivered%' OR LOWER(subject) LIKE '%delivery failed%' OR LOWER(subject) LIKE '%failure notice%' OR LOWER(subject) LIKE '%returned to sender%')";
+        $linkedinSql = "LOWER(from_email) LIKE '%linkedin.com%'";
 
         if ($category === 'primary') {
             $conditions[] = "NOT {$bounceSql}";
+            $conditions[] = "NOT ({$linkedinSql})";
+        } elseif ($category === 'linkedin') {
+            $conditions[] = "NOT {$bounceSql}";
+            $conditions[] = $linkedinSql;
         } elseif ($category === 'bounces') {
             $conditions[] = $bounceSql;
         }
@@ -349,7 +354,11 @@ final class ImapClient
         $stmtBounces->execute($baseParams);
         $totalBounces = (int) $stmtBounces->fetchColumn();
 
-        $totalPrimary = max(0, $totalAll - $totalBounces);
+        $stmtLinkedin = $this->db->prepare("SELECT COUNT(*) FROM inbox_emails WHERE {$linkedinSql} AND NOT {$bounceSql} {$baseAnd}");
+        $stmtLinkedin->execute($baseParams);
+        $totalLinkedin = (int) $stmtLinkedin->fetchColumn();
+
+        $totalPrimary = max(0, $totalAll - $totalBounces - $totalLinkedin);
 
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
@@ -362,6 +371,10 @@ final class ImapClient
         $unreadParams = [];
         if ($category === 'primary') {
             $unreadConditions[] = "NOT {$bounceSql}";
+            $unreadConditions[] = "NOT ({$linkedinSql})";
+        } elseif ($category === 'linkedin') {
+            $unreadConditions[] = "NOT {$bounceSql}";
+            $unreadConditions[] = $linkedinSql;
         } elseif ($category === 'bounces') {
             $unreadConditions[] = $bounceSql;
         }
@@ -427,6 +440,7 @@ final class ImapClient
             'category' => $category,
             'category_counts' => [
                 'primary' => $totalPrimary,
+                'linkedin' => $totalLinkedin,
                 'bounces' => $totalBounces,
                 'all' => $totalAll
             ],

@@ -9,7 +9,7 @@ use App\Services\Email\EmailQueue;
 
 final class SheetService
 {
-    public const FIELDS = ['id', 'name', 'email', 'subject', 'body', 'link', 'cc', 'bcc', 'enabled'];
+    public const FIELDS = ['id', 'name', 'email', 'subject', 'body', 'link', 'cc', 'bcc', 'enabled', 'followup1_subject', 'followup1_body', 'followup2_subject', 'followup2_body'];
     public function __construct(private PDO $db, private \Closure $request) {}
 
     public static function spreadsheetId(string $url): string
@@ -103,6 +103,12 @@ final class SheetService
             if (in_array($label, $used, true)) throw new InvalidArgumentException('Use a different column for each field.');
             $mapping[$field] = $label; $used[] = $label;
         }
+        foreach ([['followup1_subject', 'followup1_body', 'Follow-up 1'], ['followup2_subject', 'followup2_body', 'Follow-up 2']] as [$subject, $body, $name]) {
+            $hasSubject = isset($mapping[$subject]);
+            $hasBody = isset($mapping[$body]);
+            if ($hasSubject !== $hasBody) throw new InvalidArgumentException($name . ' needs both a subject column and a message column.');
+        }
+        if (isset($mapping['followup2_subject']) && !isset($mapping['followup1_subject'])) throw new InvalidArgumentException('Map Follow-up 1 before Follow-up 2.');
         return $mapping;
     }
 
@@ -228,6 +234,74 @@ final class SheetService
         return ['source' => $source, 'headers' => $data['headers'], 'tab' => $data['tab'], 'records' => $records];
     }
 
+    public function download(int $sourceId): array
+    {
+        $preview = $this->preview($sourceId);
+        $source = $preview['source'];
+        $data = $this->inspect($source['spreadsheet_id'], (int) $source['sheet_id'], (int) $source['header_row']);
+        $byRow = [];
+        foreach ($preview['records'] as $record) {
+            $byRow[(int) $record['row']][] = self::statusLabel((string) ($record['send_status'] ?? 'not_queued'));
+        }
+        $headers = $data['headers'];
+        $statusIndex = null;
+        foreach ($headers as $index => $header) {
+            $name = strtolower(trim((string) $header));
+            if (in_array($name, ['status', 'delivery status', 'mail status', 'email status'], true)) {
+                $statusIndex = $index;
+                break;
+            }
+        }
+        if ($statusIndex === null) {
+            $headers[] = 'Status';
+        }
+        $headerRow = (int) $source['header_row'];
+        $lines = [self::csvLine($headers)];
+        foreach ($data['values'] as $offset => $cells) {
+            $rowNumber = $headerRow + $offset + 1;
+            $cells = array_map(fn($value) => (string) $value, $cells);
+            $status = isset($byRow[$rowNumber]) ? implode(', ', array_values(array_unique($byRow[$rowNumber]))) : '';
+            if ($statusIndex === null) {
+                $cells[] = $status;
+            } else {
+                $cells[$statusIndex] = $status;
+            }
+            $width = count($headers);
+            $cells = array_pad(array_slice($cells, 0, $width), $width, '');
+            $lines[] = self::csvLine($cells);
+        }
+        $title = trim((string) ($data['tab']['title'] ?? $source['title'] ?? 'sheet'));
+        $safe = trim((string) preg_replace('/[^A-Za-z0-9._-]+/', '-', $title), '-');
+        if ($safe === '') {
+            $safe = 'sheet';
+        }
+        return ['filename' => $safe . '-status.csv', 'body' => "\xEF\xBB\xBF" . implode("\r\n", $lines) . "\r\n"];
+    }
+
+    private static function statusLabel(string $status): string
+    {
+        return match ($status) {
+            'sent' => 'Sent',
+            'pending', 'processing' => 'Pending',
+            'failed' => 'Failed',
+            'dry_run' => 'Test',
+            default => 'Not sent',
+        };
+    }
+
+    private static function csvLine(array $cells): string
+    {
+        $escaped = [];
+        foreach ($cells as $cell) {
+            $value = (string) $cell;
+            if (preg_match('/^[=+\-@]/', $value)) {
+                $value = "'" . $value;
+            }
+            $escaped[] = '"' . str_replace('"', '""', $value) . '"';
+        }
+        return implode(',', $escaped);
+    }
+
     public function resetProcessing(int $sourceId): int
     {
         return \App\Services\Email\EmailProcessor::recoverStuckProcessing($this->db, 0, true);
@@ -304,6 +378,11 @@ final class SheetService
         $emailQueue = new EmailQueue($this->db);
         $emailIds = [];
         $skipped = [];
+        $alreadySent = 0;
+        $stillPending = 0;
+        $statusLookup = $this->db->prepare('SELECT status, attempts FROM emails WHERE id = ?');
+        $reopen = $this->db->prepare("UPDATE emails SET status = 'pending', error = NULL, attempts = 0, updated_at = ? WHERE id = ? AND status IN ('failed', 'dry_run')");
+        $unlock = $this->db->prepare("UPDATE emails SET attempts = 0, updated_at = ? WHERE id = ? AND status = 'pending' AND attempts >= 3");
 
         foreach ($recordIds as $recId) {
             $row = $recordsById[$recId] ?? null;
@@ -340,6 +419,22 @@ final class SheetService
                     'mail_account_id' => !empty($input['mail_account_id']) ? (int) $input['mail_account_id'] : null,
                     'idempotency_key' => $this->key($preview['source'], $row['record_id']),
                 ]);
+                $statusLookup->execute([$emailId]);
+                $job = $statusLookup->fetch() ?: ['status' => 'pending', 'attempts' => 0];
+                $status = (string) $job['status'];
+                if ($status === 'sent') {
+                    $alreadySent++;
+                    continue;
+                }
+                if ($status === 'processing') {
+                    $stillPending++;
+                    continue;
+                }
+                if ($status === 'failed' || $status === 'dry_run') {
+                    $reopen->execute([gmdate('c'), $emailId]);
+                } elseif ((int) $job['attempts'] >= 3) {
+                    $unlock->execute([gmdate('c'), $emailId]);
+                }
                 $emailIds[$emailId] = $recId;
             } catch (\Throwable $e) {
                 $skipped[] = ['record_id' => $recId, 'reason' => $e->getMessage()];
@@ -350,6 +445,8 @@ final class SheetService
             return [
                 'sent' => 0,
                 'failed' => count($skipped),
+                'already_sent' => $alreadySent,
+                'pending' => $stillPending,
                 'total' => count($recordIds),
                 'skipped' => $skipped,
             ];
@@ -385,6 +482,8 @@ final class SheetService
         return [
             'sent' => $sentCount,
             'failed' => $failedCount,
+            'already_sent' => $alreadySent,
+            'pending' => $stillPending,
             'total' => count($recordIds),
             'skipped' => $skipped,
         ];

@@ -1,12 +1,31 @@
-# RSL Communication Desk & Email Automation Platform
+# RSL Communication Desk & Email / WhatsApp Automation Platform
 
-A high-performance, lightweight **Email Automation, Inbound Conversation Desk, and Lead Management Platform** built with pure native PHP 8.2+ and MySQL. 
+A high-performance, lightweight **Email Automation, WhatsApp Campaign Desk, Inbound Conversation Desk, and Lead Management Platform** built with pure native PHP 8.2+ and MySQL. 
 
-Designed for enterprise reliability with zero heavy framework bloat, sub-millisecond execution times, native Hostinger SMTP/IMAP integration, Google Sheets & Excel lead sync, and an authentic Gmail-style threaded conversation reader.
+Designed for enterprise reliability with zero heavy framework bloat, sub-millisecond execution times, native Hostinger SMTP/IMAP integration, multi-device WhatsApp dispatch & 2-way live chat, Google Sheets & Excel lead sync, and an authentic Gmail-style threaded conversation reader.
+
+## Project status (6 Nov 2026)
+
+**Email desk.** On the live host. Sheets, the send queue, inbox threads, and the email overview are in active use. Spain sheet continues queue processing at conservative batch size of 5 for deliverability preservation.
+
+**WhatsApp campaign desk.** Production-polished on local (`http://127.0.0.1:8085`).
+
+- **Chats (`#chats`).** Real-time conversational desk for numbers messaged or incoming. Features live unread count badges (`.wa-unread`), WhatsApp green timestamp highlighting, bold incoming preview snippets, and automatic unread clearance upon opening conversations. Complete thread view with chronological speech bubbles, single/double/blue delivery ticks, full-text contact search, and "All" / "Unread" filter pills.
+- **Direct Outbox / New Message (`#message`).** Dedicated single-recipient composer featuring the platform's standardized `.wa-device-head` header banner, centered ergonomic card (`780px` max-width), and a **multi-device sender dropdown** allowing operators to select which connected phone (up to 5 paired devices) dispatches the message.
+- **Sheets Workspace (`#sheets` / `#sheet-preview`).** Zero-jump 14px top spacing, single-line pacing status banner, and a 6-column balanced layout (`ID`, `AGENCY / NAME`, `PHONE`, `MESSAGE`, `STATUS`, and pinned 80px `ACTIONS` column) with responsive scrolling, bulk dispatch queuing with live pacing countdown, and campaign log tracking.
+- **Sent Campaigns (`#sent`).** High-density dispatched register showing recipient, formatted phone number, message preview, timestamp, and status ticks with 1-click drill-down to full conversation history.
+- **Overview (`#dashboard`).** Executive analytics with dynamic 7-day SVG transmission & response activity graphs, delivery breakdown donuts, device readiness indicators, and recent conversation feeds.
+- **Linked Device & Settings (`#device`, `#settings`).** Multi-device pairing hub supporting up to 5 concurrent linked WhatsApp phones via QR code with live session health indicators, individual device disconnect controls, and configurable API endpoints.
 
 ---
 
 ## 🚀 Key Highlights & Capabilities
+
+- **💬 WhatsApp Multi-Device Campaign & Conversation Desk**
+  - **Multi-Device Dispatch Selector**: Supports up to 5 paired WhatsApp devices simultaneously. Operators can select the exact dispatch device from a live dropdown before sending single messages or launching campaigns.
+  - **Authentic Live Chat & Unread Badging**: Real-time WhatsApp unread counter badges, green timestamp indicators, bold message preview typography, and instant unread count clearance when opening a chat.
+  - **Precision 6-Column Sheets Campaign Workspace**: Optimized 6-column tabular layout (`ID`, `AGENCY / NAME`, `PHONE`, `MESSAGE`, `STATUS`, `ACTIONS` pinned right 80px), single-line pacing banner, and 14px top clearance eliminating dead space.
+  - **Unified Visual Ergonomics**: Standardized `.wa-device-head` header banners across modules, horizontally centered dispatch forms, and smooth zero-shift page transitions between Email and WhatsApp desks.
 
 - **📊 Executive Analytics Overview Dashboard**
   - **7-Day Communication & Response Curve**: Dynamic SVG traffic graph comparing outgoing dispatches against inbound responses with smooth cubic bezier curves and peak window tracking.
@@ -53,6 +72,14 @@ Designed for enterprise reliability with zero heavy framework bloat, sub-millise
 │   │   │   │   ├── EmailQueue.php         # Queue management & idempotency
 │   │   │   │   ├── ImapClient.php         # Hostinger IMAP client & MIME decoder
 │   │   │   │   └── Mailer.php             # PHPMailer SMTP client
+│   │   │   ├── WhatsApp/
+│   │   │   │   ├── DeviceLink.php         # Multi-device pairing & targeted Baileys dispatch
+│   │   │   │   ├── PlatformSettings.php   # WhatsApp API configuration & endpoints
+│   │   │   │   ├── WhatsAppChatService.php# Thread history, live messages & unread counts
+│   │   │   │   ├── WhatsAppInbox.php      # Inbound sync & real-time webhook ingestion
+│   │   │   │   ├── WhatsAppOverviewService.php # 7-day SVG curves & metrics aggregation
+│   │   │   │   ├── WhatsAppSentService.php# Sent log register & delivery tick tracking
+│   │   │   │   └── WhatsAppTables.php     # Dynamic database table provisioning
 │   │   │   ├── Google/                 # Google OAuth & Sheets API
 │   │   │   └── Sheets/                 # Excel (.xlsx) / CSV parser & mapper
 │   │   └── Support/
@@ -65,14 +92,24 @@ Designed for enterprise reliability with zero heavy framework bloat, sub-millise
 │   │   └── cron/
 │   │       ├── process-emails.php # Background queue processing worker
 │   │       └── sync-inbox.php     # Background IMAP sync worker
-│   └── tests/                   # Complete test suite (46 automated checks)
+│   └── tests/                   # Automated test suite (unit, integration & feature tests)
+│       ├── run.php              # Core email queue & validation checks (25 checks)
+│       ├── sheets.php           # Google Sheets & Excel parser checks (24 checks)
+│       ├── wa_overview_test.php # WhatsApp overview aggregation test
+│       └── wa_chat_thread_test.php # WhatsApp chat thread & unread test
 ├── frontend/
 │   ├── public/
 │   │   └── assets/              # Native CSS & ES6 JS (No Node build steps required)
 │   │       ├── app.css          # Design system & dark sidebar styling
 │   │       ├── app.js           # Single-page controller & SVG chart rendering
 │   │       ├── inbox.js         # Gmail thread reader & inline composer logic
-│   │       └── sheets.js        # Google Sheets & Excel mapping controller
+│   │       ├── sheets.js        # Google Sheets & Excel mapping controller
+│   │       ├── wa-chats.js      # WhatsApp chat threads & unread badge controller
+│   │       ├── wa-device.js     # Multi-device QR linking & session controller
+│   │       ├── wa-overview.js   # WhatsApp SVG curve rendering & metrics
+│   │       ├── wa-sent.js       # WhatsApp sent log & drilldown controller
+│   │       ├── wa-sheets.js     # WhatsApp sheets campaign dispatch controller
+│   │       └── wa-sheets.css    # WhatsApp workspace styles, tables & layouts
 │   └── resources/views/
 │       └── dashboard/index.php  # Main single-page application view
 └── docs/
@@ -194,13 +231,17 @@ Hostinger provides an easy Cron Jobs manager in **hPanel** > **Advanced** > **Cr
 3. Open `http://127.0.0.1:8085` in your browser.
 
 ### Running Automated Verification Tests
-The project includes 46 unit and integration test assertions verifying queue processing, idempotency, email headers, quote trimming, and Google Sheets parsing:
+The project includes automated test suites covering queue processing, idempotency, email headers, quote trimming, Google Sheets parsing, WhatsApp overview aggregation, and conversation threads:
 ```bash
 # Run core email queue and validation checks (25/25 checks)
 php backend/tests/run.php
 
-# Run Google Sheets and Excel upload tests (21/21 checks)
+# Run Google Sheets and Excel upload tests (24/24 checks)
 php backend/tests/sheets.php
+
+# Run WhatsApp overview and chat thread tests
+php backend/tests/wa_overview_test.php
+php backend/tests/wa_chat_thread_test.php
 ```
 
 ---

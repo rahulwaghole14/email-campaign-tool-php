@@ -32,42 +32,89 @@ open "u105084344.mailpilot@89.117.188.34"
 option batch abort
 option confirm off
 
+# --- Email Services ---
 cd /backend/app/Services/Email
 lcd "$workspaceRoot\backend\app\Services\Email"
 put ConversationThread.php
 put EmailHistory.php
 put EmailProcessor.php
 put ImapClient.php
+put Mailer.php
+put EmailQueue.php
 
+# --- Core Services ---
 cd /backend/app/Services
 lcd "$workspaceRoot\backend\app\Services"
 put DashboardService.php
 put MailAccountService.php
+put UserService.php
+put AdminSetup.php
 
+# --- Sheet Services ---
 cd /backend/app/Services/Sheets
 lcd "$workspaceRoot\backend\app\Services\Sheets"
 put SheetService.php
 put UploadReader.php
+put UploadedWorkbook.php
+put WhatsAppSheetService.php
 
+# --- WhatsApp Services ---
+option batch continue
+mkdir /backend/app/Services/WhatsApp
+option batch abort
+cd /backend/app/Services/WhatsApp
+lcd "$workspaceRoot\backend\app\Services\WhatsApp"
+put DeviceLink.php
+put PlatformSettings.php
+put WhatsAppChatService.php
+put WhatsAppInbox.php
+put WhatsAppOverviewService.php
+put WhatsAppSentService.php
+
+# --- Google Services ---
+cd /backend/app/Services/Google
+lcd "$workspaceRoot\backend\app\Services\Google"
+put GoogleClient.php
+
+# --- Support ---
 cd /backend/app/Support
 lcd "$workspaceRoot\backend\app\Support"
 put Database.php
 
+# --- Backend Public ---
 cd /backend/public
 lcd "$workspaceRoot\backend\public"
 put index.php
+put migrate.php
+put .user.ini
 
+# --- Routes ---
 cd /backend/routes
 lcd "$workspaceRoot\backend\routes"
 put sheets.php
+put whatsapp_sheets.php
+put whatsapp_device.php
+put whatsapp_overview.php
+put whatsapp_send.php
+put whatsapp_sent.php
+put whatsapp_chats.php
+put whatsapp_settings.php
 
+# --- Frontend Assets ---
 cd /frontend/public/assets
 lcd "$workspaceRoot\frontend\public\assets"
 put app.css
 put app.js
 put inbox.js
 put sheets.js
+put wa-sheets.js
+put wa-sheets.css
+put wa-device.js
+put wa-overview.js
+put wa-sent.js
+put wa-chats.js
 
+# --- Dashboard View ---
 cd /frontend/resources/views/dashboard
 lcd "$workspaceRoot\frontend\resources\views\dashboard"
 put index.php

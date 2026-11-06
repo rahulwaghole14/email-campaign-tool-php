@@ -17,7 +17,24 @@ final class Database
         }
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+            try {
+                $db->exec('SET SESSION wait_timeout = 28800, interactive_timeout = 28800');
+            } catch (\Throwable $e) {
+            }
+        }
         return $db;
+    }
+
+    /** A long SMTP send can outlive MySQL's idle timeout. Reopen when the handle is dead. */
+    public static function reconnectIfNeeded(PDO $db): PDO
+    {
+        try {
+            $db->query('SELECT 1');
+            return $db;
+        } catch (\Throwable $e) {
+            return self::connect();
+        }
     }
 
     public static function migrate(PDO $db): void
@@ -122,6 +139,51 @@ final class Database
                 ]);
             }
         } catch (\Throwable $e) {}
+
+        // ── WhatsApp tables ───────────────────────────────────────────────────
+        $db->exec("CREATE TABLE IF NOT EXISTS whatsapp_account (
+            id INTEGER PRIMARY KEY,
+            name VARCHAR(160) NOT NULL,
+            base_url VARCHAR(255) NOT NULL,
+            access_token TEXT NOT NULL,
+            updated_at VARCHAR(32) NOT NULL
+        )");
+        $db->exec("CREATE TABLE IF NOT EXISTS whatsapp_sends (
+            id $id,
+            phone VARCHAR(32) NOT NULL,
+            name VARCHAR(160) NOT NULL DEFAULT '',
+            message TEXT NOT NULL,
+            status VARCHAR(16) NOT NULL,
+            error TEXT NULL,
+            account_name VARCHAR(160) NOT NULL DEFAULT '',
+            device_id VARCHAR(80) NULL,
+            due_at VARCHAR(32) NULL,
+            created_at VARCHAR(32) NOT NULL
+        )");
+        $db->exec("CREATE TABLE IF NOT EXISTS whatsapp_chats (
+            id $id,
+            phone VARCHAR(32) NOT NULL,
+            name VARCHAR(160) NOT NULL DEFAULT '',
+            last_message TEXT NOT NULL,
+            last_at VARCHAR(32) NOT NULL
+        )");
+        $db->exec("CREATE TABLE IF NOT EXISTS whatsapp_chat_messages (
+            id $id,
+            chat_id INTEGER NOT NULL,
+            direction VARCHAR(8) NOT NULL,
+            body TEXT NOT NULL,
+            created_at VARCHAR(32) NOT NULL
+        )");
+        $db->exec("CREATE TABLE IF NOT EXISTS whatsapp_sheet_sources (
+            id $id,
+            spreadsheet_id VARCHAR(160) NOT NULL,
+            sheet_id INTEGER NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            header_row INTEGER NOT NULL,
+            mapping TEXT NOT NULL,
+            created_at VARCHAR(32) NOT NULL,
+            UNIQUE(spreadsheet_id, sheet_id)
+        )");
 
         // Seed default administrator user if users table is empty
         try {

@@ -24,6 +24,19 @@ final class UploadedWorkbook
         return $id;
     }
 
+    public function replace(string $id, string $path, string $name): void
+    {
+        if (!preg_match('/^upload:[a-f0-9]{64}$/D', $id)) throw new InvalidArgumentException('Invalid upload identifier.');
+        $tabs = UploadReader::read($path, $name);
+        $data = json_encode($tabs, JSON_THROW_ON_ERROR);
+        if (strlen($data) > 10 * 1024 * 1024) throw new InvalidArgumentException('Imported data is too large. Split the workbook.');
+        $existing = $this->db->prepare('SELECT id FROM uploaded_sheets WHERE id = ?');
+        $existing->execute([$id]);
+        if (!$existing->fetchColumn()) throw new InvalidArgumentException('Uploaded workbook not found.');
+        $this->db->prepare('UPDATE uploaded_sheets SET title = ?, workbook = ? WHERE id = ?')
+            ->execute([mb_substr(basename(str_replace('\\', '/', $name)), 0, 240), $data, $id]);
+    }
+
     public function request(string $method, string $path, ?array $body): array
     {
         $decoded = rawurldecode($path);

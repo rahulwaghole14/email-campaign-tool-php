@@ -324,6 +324,7 @@
       // Update category tab counts
       if (data.category_counts) {
         if ($('#inbox-count-primary')) $('#inbox-count-primary').textContent = data.category_counts.primary ?? 0;
+        if ($('#inbox-count-linkedin')) $('#inbox-count-linkedin').textContent = data.category_counts.linkedin ?? 0;
         if ($('#inbox-count-bounces')) $('#inbox-count-bounces').textContent = data.category_counts.bounces ?? 0;
         if ($('#inbox-count-all')) $('#inbox-count-all').textContent = data.category_counts.all ?? 0;
       }
@@ -491,6 +492,8 @@
       let emptyMsg = 'This mailbox has no matching messages or has not been synced yet.';
       if (inboxCategory === 'bounces') {
         emptyMsg = 'No bounced or undelivered emails found.';
+      } else if (inboxCategory === 'linkedin') {
+        emptyMsg = 'No LinkedIn messages found.';
       } else if (inboxCategory === 'primary') {
         emptyMsg = 'No client replies or incoming messages yet.';
       }

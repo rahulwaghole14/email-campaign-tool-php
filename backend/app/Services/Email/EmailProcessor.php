@@ -2,7 +2,9 @@
 declare(strict_types=1);
 namespace App\Services\Email;
 
+use App\Support\Database;
 use PDO;
+use PDOException;
 use RuntimeException;
 
 final class EmailProcessor
@@ -113,13 +115,19 @@ final class EmailProcessor
             $results = $mailer->sendBatch($validEmails);
         } catch (\Throwable $t) {
             // Revert claimed emails to pending so they do not stay stuck in processing
+            $this->db = Database::reconnectIfNeeded($this->db);
             $revert = $this->db->prepare("UPDATE emails SET status = 'pending', updated_at = ? WHERE id = ? AND status = 'processing'");
             $revertNow = gmdate('c');
             foreach ($validEmails as $ve) {
-                $revert->execute([$revertNow, $ve['id']]);
+                try {
+                    $revert->execute([$revertNow, $ve['id']]);
+                } catch (PDOException $e) {
+                    error_log('Could not return email ' . $ve['id'] . ' to pending: ' . $e->getMessage());
+                }
             }
             throw $t;
         }
+        $this->db = Database::reconnectIfNeeded($this->db);
         $queue = new EmailQueue($this->db);
 
         $updateSent = $this->db->prepare("UPDATE emails SET status = ?, message_id = ?, error = NULL, updated_at = ? WHERE id = ?");
@@ -131,13 +139,28 @@ final class EmailProcessor
             $res = $results[$id] ?? ['status' => 'failed', 'error' => 'Unknown sending error'];
             $status = $res['status'] ?? 'failed';
 
-            if ($status === 'sent' || $status === 'dry_run') {
-                $updateSent->execute([$status, $res['message_id'] ?? null, gmdate('c'), $id]);
-                $queue->log($id, $status, $status === 'sent' ? 'SMTP server accepted the email.' : 'Dry run completed; no email was sent.');
-            } else {
-                $err = $res['error'] ?? 'Delivery could not be confirmed.';
-                $updateFailed->execute([$err, gmdate('c'), $id]);
-                $queue->log($id, 'failed', $err);
+            try {
+                if ($status === 'sent' || $status === 'dry_run') {
+                    $updateSent->execute([$status, $res['message_id'] ?? null, gmdate('c'), $id]);
+                    $queue->log($id, $status, $status === 'sent' ? 'SMTP server accepted the email.' : 'Dry run completed; no email was sent.');
+                } else {
+                    $err = $res['error'] ?? 'Delivery could not be confirmed.';
+                    $updateFailed->execute([$err, gmdate('c'), $id]);
+                    $queue->log($id, 'failed', $err);
+                }
+            } catch (PDOException $e) {
+                $this->db = Database::reconnectIfNeeded($this->db);
+                $queue = new EmailQueue($this->db);
+                $updateSent = $this->db->prepare("UPDATE emails SET status = ?, message_id = ?, error = NULL, updated_at = ? WHERE id = ?");
+                $updateFailed = $this->db->prepare("UPDATE emails SET status = 'failed', error = ?, updated_at = ? WHERE id = ?");
+                if ($status === 'sent' || $status === 'dry_run') {
+                    $updateSent->execute([$status, $res['message_id'] ?? null, gmdate('c'), $id]);
+                    $queue->log($id, $status, 'SMTP server accepted the email.');
+                } else {
+                    $err = $res['error'] ?? 'Delivery could not be confirmed.';
+                    $updateFailed->execute([$err, gmdate('c'), $id]);
+                    $queue->log($id, 'failed', $err);
+                }
             }
             $finalStatuses[$id] = ['id' => $id, 'status' => $status];
         }

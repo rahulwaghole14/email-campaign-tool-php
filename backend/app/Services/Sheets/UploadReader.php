@@ -9,7 +9,7 @@ use DOMXPath;
 
 final class UploadReader
 {
-    public const MAX_BYTES = 5 * 1024 * 1024;
+    public const MAX_BYTES = 10 * 1024 * 1024;
     private const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 
     public static function parseQuantity(?string $val): int
