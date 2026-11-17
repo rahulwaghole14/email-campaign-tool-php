@@ -13,8 +13,14 @@ use RuntimeException;
 /** Shares a WhatsApp sheet's ready rows across its phones and sends each row when it is due. */
 final class WhatsAppQueue
 {
+    /** Used when a sheet has no daily limit saved. */
     public const DAILY = 20;
     private const DEFAULT_TIME = '10:00';
+    /** Minutes to wait before trying a row again after the phone service did not answer. Five tries in all. */
+    private const RETRY_MINUTES = [2, 5, 10, 20];
+    /** After a failed try, that phone's other waiting rows wait this long, so a short outage does not use up every row's tries. */
+    private const COOLDOWN_SECONDS = 60;
+    private const HELD_NOTE = 'Held: this number has no country code the phone service can read, so it was not sent. Check the number in the sheet.';
 
     private DateTimeZone $zone;
 
@@ -25,14 +31,14 @@ final class WhatsAppQueue
         $this->zone = new DateTimeZone('Asia/Kolkata');
     }
 
-    public function plan(int $sourceId): array
+    public function plan(int $sourceId, ?array $recordIds = null): array
     {
-        return $this->summary($this->build($sourceId));
+        return $this->summary($this->build($sourceId, $recordIds));
     }
 
-    public function queue(int $sourceId): array
+    public function queue(int $sourceId, ?array $recordIds = null): array
     {
-        $built = $this->build($sourceId);
+        $built = $this->build($sourceId, $recordIds);
         $insert = $this->db->prepare(
             'INSERT INTO whatsapp_sends (phone, name, message, status, error, account_name, device_id, due_at, source_id, record_id, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)'
         );
@@ -63,16 +69,27 @@ final class WhatsAppQueue
     }
 
     /** Send at most one due row per phone, keeping the gap and the daily cap. */
+    /** Whether sending is paused by the user. Rows stay queued while paused. */
+    public function isPaused(): bool
+    {
+        return $this->db->query("SELECT value FROM whatsapp_queue_state WHERE name = 'paused'")->fetchColumn() === '1';
+    }
+
+    /** Pause or resume sending. Nothing is removed from the queue. */
+    public function setPaused(bool $paused): array
+    {
+        $this->db->prepare("DELETE FROM whatsapp_queue_state WHERE name = 'paused'")->execute();
+        $this->db->prepare("INSERT INTO whatsapp_queue_state (name, value) VALUES ('paused', ?)")->execute([$paused ? '1' : '0']);
+        return ['paused' => $paused];
+    }
+
     public function run(): array
     {
+        if ($this->isPaused()) {
+            return ['sent' => 0, 'failed' => 0, 'retried' => 0, 'not_ready' => [], 'error' => null, 'paused' => true] + $this->waitingTotals();
+        }
         $now = time();
-        $rows = $this->db->query(
-            "SELECT s.id, s.phone, s.message, s.device_id, s.account_name, s.due_at, src.delay_minutes FROM whatsapp_sends s LEFT JOIN whatsapp_sheet_sources src ON src.id = s.source_id WHERE s.status = 'waiting' AND s.due_at IS NOT NULL AND s.device_id IS NOT NULL ORDER BY s.due_at ASC, s.id ASC"
-        )->fetchAll();
-        $result = ['sent' => 0, 'failed' => 0, 'not_ready' => [], 'error' => null];
-        if (!$rows) return $result + $this->waitingTotals();
-        $due = array_filter($rows, static fn ($row) => is_array($row) && (strtotime((string) $row['due_at']) ?: PHP_INT_MAX) <= $now);
-        if (!$due) return $result + $this->waitingTotals();
+        $result = ['sent' => 0, 'failed' => 0, 'retried' => 0, 'not_ready' => [], 'error' => null];
         try {
             $ready = [];
             foreach ($this->link->roster()['devices'] as $device) {
@@ -82,9 +99,30 @@ final class WhatsAppQueue
             $result['error'] = $e->getMessage();
             return $result + $this->waitingTotals();
         }
+        $rows = $this->db->query(
+            "SELECT s.id, s.phone, s.message, s.device_id, s.account_name, s.due_at, s.attempts, src.delay_minutes, src.delay_max_minutes, src.daily_limit FROM whatsapp_sends s LEFT JOIN whatsapp_sheet_sources src ON src.id = s.source_id WHERE s.status = 'waiting' AND s.due_at IS NOT NULL AND s.device_id IS NOT NULL ORDER BY s.due_at ASC, s.id ASC"
+        )->fetchAll();
+        if (!$rows) return $result + $this->waitingTotals();
+        // Rows stuck on a disconnected phone move onto ready phones before this run sends.
+        if ($ready) {
+            foreach ($rows as $row) {
+                if (!is_array($row)) continue;
+                if (!isset($ready[(string) ($row['device_id'] ?? '')])) {
+                    $this->compact();
+                    $rows = $this->db->query(
+                        "SELECT s.id, s.phone, s.message, s.device_id, s.account_name, s.due_at, s.attempts, src.delay_minutes, src.delay_max_minutes, src.daily_limit FROM whatsapp_sends s LEFT JOIN whatsapp_sheet_sources src ON src.id = s.source_id WHERE s.status = 'waiting' AND s.due_at IS NOT NULL AND s.device_id IS NOT NULL ORDER BY s.due_at ASC, s.id ASC"
+                    )->fetchAll();
+                    break;
+                }
+            }
+        }
+        $due = array_filter($rows, static fn ($row) => is_array($row) && (strtotime((string) $row['due_at']) ?: PHP_INT_MAX) <= $now);
+        if (!$due) return $result + $this->waitingTotals();
         $chats = new WhatsAppChatService($this->db);
         $seen = [];
-        foreach ($due as $row) {
+        $queue = array_values($due);
+        while ($queue) {
+            $row = array_shift($queue);
             $deviceId = (string) $row['device_id'];
             if (isset($seen[$deviceId])) continue;
             $seen[$deviceId] = true;
@@ -92,10 +130,11 @@ final class WhatsAppQueue
                 $result['not_ready'][] = (string) $row['account_name'];
                 continue;
             }
-            $gap = max(1, (int) ($row['delay_minutes'] ?? 1)) * 60;
+            // Shortest gap is the floor: never send earlier than the sheet's minimum wait.
+            $gap = $this->gapRange($row['delay_minutes'] ?? 1, $row['delay_max_minutes'] ?? null)[0] * 60;
             [$last, $today] = $this->sentStats($deviceId, $now);
             if ($last !== 0 && $last + $gap > $now) continue;
-            if ($today >= self::DAILY) continue;
+            if ($today >= $this->dailyLimit($row['daily_limit'] ?? null)) continue;
             $claim = $this->db->prepare("UPDATE whatsapp_sends SET status = 'sending' WHERE id = ? AND status = 'waiting'");
             $claim->execute([(int) $row['id']]);
             if ($claim->rowCount() !== 1) continue;
@@ -107,14 +146,62 @@ final class WhatsAppQueue
                     ->execute([$at, $from['name'] !== '' ? $from['name'] : (string) $row['account_name'], (int) $row['id']]);
                 $chats->noteOutgoing((string) $row['phone'], (string) $row['message'], $at, $deviceId);
                 $result['sent']++;
+            } catch (PhoneServiceUnavailable $e) {
+                $attempt = (int) ($row['attempts'] ?? 0) + 1;
+                if ($attempt <= count(self::RETRY_MINUTES)) {
+                    // The service did not answer: keep the row waiting and try again later.
+                    $retryAt = $now + self::RETRY_MINUTES[$attempt - 1] * 60;
+                    $this->db->prepare("UPDATE whatsapp_sends SET status = 'waiting', attempts = ?, error = ?, due_at = ? WHERE id = ?")
+                        ->execute([$attempt, mb_substr($e->getMessage(), 0, 500), gmdate('c', $retryAt), (int) $row['id']]);
+                    $this->coolDown($deviceId, $now + self::COOLDOWN_SECONDS, (int) $row['id']);
+                    $result['retried']++;
+                } else {
+                    $this->db->prepare("UPDATE whatsapp_sends SET status = 'failed', attempts = ?, error = ?, created_at = ? WHERE id = ?")
+                        ->execute([$attempt, mb_substr($e->getMessage(), 0, 500), gmdate('c'), (int) $row['id']]);
+                    $result['failed']++;
+                }
             } catch (RuntimeException $e) {
                 $this->db->prepare("UPDATE whatsapp_sends SET status = 'failed', error = ?, created_at = ? WHERE id = ?")
                     ->execute([mb_substr($e->getMessage(), 0, 500), gmdate('c'), (int) $row['id']]);
                 $result['failed']++;
+                if (self::noWhatsapp($e->getMessage())) {
+                    // The number cannot get the message, so the phone's slot is free. Its next row is pulled up to now and
+                    // is tried in this same run. The gap since the last sent message still applies, so nothing is sent early.
+                    $next = $this->pullNext($deviceId, $now);
+                    if ($next !== null) {
+                        unset($seen[$deviceId]);
+                        $queue[] = $next;
+                    }
+                }
             }
         }
         $result['not_ready'] = array_values(array_unique($result['not_ready']));
         return $result + $this->waitingTotals();
+    }
+
+    /** The phone's next waiting row, moved up to now if it is later. Returns null when the phone has no such row. Retrying rows keep their time. */
+    private function pullNext(string $deviceId, int $now): ?array
+    {
+        $find = $this->db->prepare(
+            "SELECT s.id, s.phone, s.message, s.device_id, s.account_name, s.due_at, s.attempts, src.delay_minutes, src.daily_limit FROM whatsapp_sends s LEFT JOIN whatsapp_sheet_sources src ON src.id = s.source_id WHERE s.status = 'waiting' AND s.device_id = ? AND s.due_at IS NOT NULL AND (s.attempts IS NULL OR s.attempts = 0) ORDER BY s.due_at ASC, s.id ASC LIMIT 1"
+        );
+        $find->execute([$deviceId]);
+        $row = $find->fetch();
+        if (!is_array($row)) return null;
+        if ((strtotime((string) $row['due_at']) ?: PHP_INT_MAX) > $now) {
+            $this->db->prepare("UPDATE whatsapp_sends SET due_at = ? WHERE id = ? AND status = 'waiting'")
+                ->execute([gmdate('c', $now), (int) $row['id']]);
+            $row['due_at'] = gmdate('c', $now);
+        }
+        return $row;
+    }
+
+    /** Hold this phone's other waiting rows until $until, keeping their order. */
+    private function coolDown(string $deviceId, int $until, int $exceptId): void
+    {
+        $mark = gmdate('c', $until);
+        $this->db->prepare("UPDATE whatsapp_sends SET due_at = ? WHERE device_id = ? AND status = 'waiting' AND id <> ? AND due_at < ?")
+            ->execute([$mark, $deviceId, $exceptId, $mark]);
     }
 
     public function progress(int $sourceId): array
@@ -150,48 +237,460 @@ final class WhatsAppQueue
         return $totals + ['phones' => array_values($phones), 'log' => array_slice($log, 0, 12)];
     }
 
-    /** @return array<string, string> record id => pending, sent, or failed */
+    /**
+     * Move waiting rows forward into the slots left by held or removed rows.
+     * Each phone keeps its own rows in order, its gap and its daily limit. Retrying rows keep their time.
+     */
+    public function compact(): array
+    {
+        $now = (int) (ceil(time() / 60) * 60);
+        $sentDays = [];
+        $sentLast = [];
+        foreach ($this->db->query("SELECT device_id, created_at FROM whatsapp_sends WHERE status = 'sent' AND device_id IS NOT NULL")->fetchAll() as $row) {
+            $id = (string) $row['device_id'];
+            $at = strtotime((string) $row['created_at']) ?: 0;
+            if (!$at) continue;
+            $day = $this->day($at);
+            $sentDays[$id][$day] = ($sentDays[$id][$day] ?? 0) + 1;
+            $sentLast[$id] = max($sentLast[$id] ?? 0, $at);
+        }
+
+        $rows = $this->db->query(
+            "SELECT s.id, s.device_id, s.due_at, s.attempts, s.source_id, src.start_date, src.start_time, src.delay_minutes, src.delay_max_minutes, src.daily_limit FROM whatsapp_sends s LEFT JOIN whatsapp_sheet_sources src ON src.id = s.source_id WHERE s.status = 'waiting' AND s.device_id IS NOT NULL AND s.source_id IS NOT NULL ORDER BY s.due_at ASC, s.id ASC"
+        )->fetchAll();
+        $bySource = [];
+        foreach ($rows as $row) $bySource[(int) $row['source_id']][] = $row;
+
+        // Read the connected phones before the transaction. Reading the roster runs table DDL, and in MySQL DDL ends a transaction early.
+        $readyBySource = [];
+        foreach ($bySource as $sourceId => $sourceRows) {
+            $readyBySource[$sourceId] = array_map(static fn (array $phone) => $phone['id'], $this->phones($this->sourceSetting((int) $sourceRows[0]['source_id'])));
+        }
+
+        $update = $this->db->prepare("UPDATE whatsapp_sends SET device_id = ?, due_at = ? WHERE id = ? AND status = 'waiting'");
+        $moved = 0;
+        $finish = 0;
+        $this->db->beginTransaction();
+        try {
+            foreach ($bySource as $sourceId => $sourceRows) {
+                $first = $sourceRows[0];
+                [$gapMin] = $this->gapRange($first['delay_minutes'] ?? 1, $first['delay_max_minutes'] ?? null);
+                $daily = $this->dailyLimit($first['daily_limit'] ?? null);
+                $time = $this->startTime(['start_time' => (string) ($first['start_time'] ?? '')]);
+                $from = trim((string) ($first['start_date'] ?? ''));
+                $floor = $from !== '' ? (new DateTimeImmutable($from . ' ' . $time, $this->zone))->getTimestamp() : 0;
+
+                // Retrying rows keep their phone and time; they only use up a slot on their day.
+                $days = [];
+                $movable = [];
+                foreach ($sourceRows as $row) {
+                    if ((int) ($row['attempts'] ?? 0) > 0) {
+                        $id = (string) $row['device_id'];
+                        $day = $this->day(strtotime((string) $row['due_at']) ?: $now);
+                        $days[$id][$day] = ($days[$id][$day] ?? 0) + 1;
+                        continue;
+                    }
+                    $movable[] = $row;
+                }
+                if (!$movable) continue;
+
+                // Only phones that are connected right now take rows, so rows left on a disconnected phone move to the others.
+                // The sheet's phone choice (all phones or picked ones) still applies.
+                $phones = $readyBySource[$sourceId];
+                if (!$phones) continue;
+                $cursor = [];
+                foreach ($phones as $id) {
+                    foreach ($sentDays[$id] ?? [] as $day => $count) $days[$id][$day] = ($days[$id][$day] ?? 0) + $count;
+                    $last = $sentLast[$id] ?? 0;
+                    $at = max($now, $floor, $last !== 0 ? $last + $gapMin * 60 : 0);
+                    $cursor[$id] = $this->fit($at, $days[$id] ?? [], $time, $daily);
+                }
+
+                foreach ($movable as $row) {
+                    $pick = null;
+                    foreach ($phones as $id) {
+                        if ($pick === null || $cursor[$id] < $cursor[$pick]) $pick = $id;
+                    }
+                    $at = $cursor[$pick];
+                    $day = $this->day($at);
+                    $days[$pick][$day] = ($days[$pick][$day] ?? 0) + 1;
+                    $update->execute([$pick, gmdate('c', $at), (int) $row['id']]);
+                    $moved++;
+                    $finish = max($finish, $at);
+                    $next = $at + $this->gapSeconds($first['delay_minutes'] ?? 1, $first['delay_max_minutes'] ?? null);
+                    if ($this->day($next) !== $day) $next = $this->dayStart($day, 1, $time);
+                    $cursor[$pick] = $this->fit($next, $days[$pick], $time, $daily);
+                }
+            }
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+        return ['moved' => $moved, 'last_at' => $finish ? gmdate('c', $finish) : null];
+    }
+
+    /** A number like +66 2 538 2203 has 10 digits with no country code the service can read; it is sent as an Indian number and can reach the wrong person. */
+    private static function unsafeNumber(string $phone): bool
+    {
+        return str_starts_with(trim($phone), '+') && strlen(preg_replace('/\D+/', '', $phone) ?? '') === 10;
+    }
+
+    /** Hold every waiting row with an unsafe number so it is never sent. Returns how many were held. */
+    public function holdUnsafe(): int
+    {
+        $rows = $this->db->query("SELECT id, phone FROM whatsapp_sends WHERE status = 'waiting' AND source_id IS NOT NULL")->fetchAll();
+        $update = $this->db->prepare("UPDATE whatsapp_sends SET status = 'held', error = ? WHERE id = ? AND status = 'waiting'");
+        $count = 0;
+        foreach ($rows as $row) {
+            if (!self::unsafeNumber((string) $row['phone'])) continue;
+            $update->execute([self::HELD_NOTE, (int) $row['id']]);
+            $count += $update->rowCount();
+        }
+        return $count;
+    }
+
+    /** Today's picture across every sheet: what went out, what is still due today, and when it should finish. */
+    public function today(): array
+    {
+        $now = time();
+        $day = $this->day($now);
+        $dayEnd = (new DateTimeImmutable($day . ' 00:00', $this->zone))->modify('+1 day')->getTimestamp();
+        // The sending phone's name comes from its device now. The saved account_name can be stale after a row is moved to another phone.
+        $columns = 's.id, s.phone, s.name, s.status, s.error, COALESCE(NULLIF(dv.name, \'\'), s.account_name) AS account_name, s.device_id, s.due_at, s.created_at, s.attempts, src.title, src.delay_minutes, src.delay_max_minutes, src.daily_limit';
+        $join = 'FROM whatsapp_sends s LEFT JOIN whatsapp_sheet_sources src ON src.id = s.source_id LEFT JOIN whatsapp_devices dv ON dv.device_id = s.device_id';
+        $margin = gmdate('c', $now - 2 * 86400);
+        $query = $this->db->prepare("SELECT $columns $join WHERE (s.status IN ('waiting', 'sending')) OR (s.status = 'sent' AND s.created_at >= ?) ORDER BY s.id ASC");
+        $query->execute([$margin]);
+        $rows = $query->fetchAll();
+        $failedRows = $this->db->query(
+            "SELECT $columns $join WHERE s.status IN ('failed', 'blocked') AND s.source_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM whatsapp_sends n WHERE n.source_id = s.source_id AND n.record_id = s.record_id AND n.id > s.id) ORDER BY s.id DESC"
+        )->fetchAll();
+
+        $phones = [];
+        $touch = function (array $row) use (&$phones): string {
+            $id = (string) ($row['device_id'] ?? '');
+            [$gapMin, $gapMax] = $this->gapRange($row['delay_minutes'] ?? 1, $row['delay_max_minutes'] ?? null);
+            $phones[$id] ??= ['id' => $id, 'name' => (string) $row['account_name'], 'sent' => 0, 'left' => 0, 'later' => 0, 'failed' => 0, 'cap' => $this->dailyLimit($row['daily_limit'] ?? null), 'gap' => $gapMin, 'gap_min' => $gapMin, 'gap_max' => $gapMax, 'next_at' => null, 'last_at' => null];
+            if ((string) $row['account_name'] !== '') $phones[$id]['name'] = (string) $row['account_name'];
+            return $id;
+        };
+        $sent = [];
+        $upcoming = [];
+        $dayCounts = [];
+        $later = 0;
+        $retrying = 0;
+        $overdue = 0;
+        $allDone = 0;
+        foreach ($rows as $row) {
+            $id = $touch($row);
+            if ($row['status'] === 'sent') {
+                $at = strtotime((string) $row['created_at']) ?: 0;
+                if ($this->day($at) !== $day) continue;
+                $phones[$id]['sent']++;
+                $phones[$id]['last_at'] = max($phones[$id]['last_at'] ?? 0, $at);
+                // Today's sent messages also count in the day-by-day list, next to what is still waiting.
+                $dayCounts[$day] ??= ['date' => $day, 'count' => 0, 'first' => null, 'last' => null];
+                $dayCounts[$day]['count']++;
+                $dayCounts[$day]['first'] = min($dayCounts[$day]['first'] ?? PHP_INT_MAX, $at);
+                $dayCounts[$day]['last'] = max($dayCounts[$day]['last'] ?? 0, $at);
+                $sent[] = $this->todayItem($row, (string) $row['created_at']);
+                continue;
+            }
+            $due = strtotime((string) ($row['due_at'] ?: $row['created_at'])) ?: $now;
+            if ($due > $allDone) $allDone = $due;
+            $bucket = $this->day(max($due, $now));
+            $dayCounts[$bucket] ??= ['date' => $bucket, 'count' => 0, 'first' => null, 'last' => null];
+            $dayCounts[$bucket]['count']++;
+            $dayCounts[$bucket]['first'] = min($dayCounts[$bucket]['first'] ?? PHP_INT_MAX, max($due, $now));
+            $dayCounts[$bucket]['last'] = max($dayCounts[$bucket]['last'] ?? 0, max($due, $now));
+            if ($due >= $dayEnd) {
+                $later++;
+                $phones[$id]['later']++;
+                continue;
+            }
+            $phones[$id]['left']++;
+            if ((int) ($row['attempts'] ?? 0) > 0) $retrying++;
+            if ($due < $now - 300) $overdue++;
+            $shown = max($due, $now);
+            if ($phones[$id]['next_at'] === null || $shown < $phones[$id]['next_at']) $phones[$id]['next_at'] = $shown;
+            if ($phones[$id]['last_at'] === null || $shown > $phones[$id]['last_at']) $phones[$id]['last_at'] = $shown;
+            $upcoming[] = $this->todayItem($row, gmdate('c', $shown)) + ['sort' => $shown];
+        }
+        $failed = [];
+        $noWhatsapp = [];
+        $failedToday = 0;
+        foreach ($failedRows as $row) {
+            // The number is not on WhatsApp: sending again cannot help, so it is listed apart from real failures.
+            if (self::noWhatsapp((string) ($row['error'] ?? ''))) {
+                $noWhatsapp[] = $this->todayItem($row, (string) $row['created_at']);
+                continue;
+            }
+            $id = $touch($row);
+            $phones[$id]['failed']++;
+            $at = strtotime((string) $row['created_at']) ?: 0;
+            if ($this->day($at) === $day) $failedToday++;
+            $failed[] = $this->todayItem($row, (string) $row['created_at']);
+        }
+        usort($upcoming, static fn ($a, $b) => $a['sort'] <=> $b['sort']);
+        usort($sent, static fn ($a, $b) => (strtotime($b['at']) ?: 0) <=> (strtotime($a['at']) ?: 0));
+        $left = count($upcoming);
+        $next = $left ? $upcoming[0]['sort'] : null;
+        $last = $left ? end($upcoming)['sort'] : null;
+        foreach ($upcoming as &$item) unset($item['sort']);
+        unset($item);
+        // Name each phone from the device list. Hide a phone that is not connected and has nothing left today.
+        $devices = [];
+        foreach ($this->db->query('SELECT device_id, name, status FROM whatsapp_devices')->fetchAll(PDO::FETCH_ASSOC) as $device) {
+            $devices[(string) $device['device_id']] = $device;
+        }
+        foreach ($phones as $key => $phone) {
+            $device = $devices[$key] ?? null;
+            if ($device !== null && trim((string) $device['name']) !== '') $phones[$key]['name'] = (string) $device['name'];
+            $connected = $device !== null && (string) $device['status'] === 'ready';
+            if (!$connected && $phone['left'] === 0 && $phone['later'] === 0) unset($phones[$key]);
+        }
+        foreach ($phones as &$phone) {
+            foreach (['next_at', 'last_at'] as $key) $phone[$key] = $phone[$key] !== null ? gmdate('c', $phone[$key]) : null;
+        }
+        unset($phone);
+        ksort($phones);
+        ksort($dayCounts);
+        $days = [];
+        foreach (array_slice(array_values($dayCounts), 0, 120) as $item) {
+            $days[] = ['date' => $item['date'], 'count' => $item['count'], 'first_at' => gmdate('c', $item['first']), 'last_at' => gmdate('c', $item['last'])];
+        }
+        return [
+            'now' => gmdate('c', $now),
+            'date' => $day,
+            'paused' => $this->isPaused(),
+            'days' => $days,
+            'sent' => count($sent),
+            'left' => $left,
+            'later' => $later,
+            'failed' => count($failed),
+            'failed_today' => $failedToday,
+            'held' => (int) $this->db->query("SELECT COUNT(*) FROM whatsapp_sends WHERE status = 'held'")->fetchColumn(),
+            'no_whatsapp' => count($noWhatsapp),
+            'no_whatsapp_list' => array_slice($noWhatsapp, 0, 60),
+            'retrying' => $retrying,
+            'overdue' => $overdue,
+            'next_at' => $next !== null ? gmdate('c', $next) : null,
+            'finish_today_at' => $last !== null ? gmdate('c', $last) : null,
+            'all_done_at' => $allDone > 0 ? gmdate('c', $allDone) : null,
+            'phones' => array_values($phones),
+            'upcoming' => array_slice($upcoming, 0, 60),
+            'sent_list' => array_slice($sent, 0, 60),
+            'failed_list' => array_slice($failed, 0, 60),
+        ];
+    }
+
+    /** Put every failed sheet send back in the queue so it goes out again. Returns how many were queued. */
+    public function retryFailed(): int
+    {
+        $found = $this->db->query(
+            "SELECT s.id, s.error FROM whatsapp_sends s WHERE s.status = 'failed' AND s.source_id IS NOT NULL AND s.device_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM whatsapp_sends n WHERE n.source_id = s.source_id AND n.record_id = s.record_id AND n.id > s.id) ORDER BY s.id ASC"
+        )->fetchAll();
+        if (!$found) return 0;
+        $now = gmdate('c');
+        $update = $this->db->prepare("UPDATE whatsapp_sends SET status = 'waiting', attempts = 0, error = NULL, due_at = ? WHERE id = ? AND status = 'failed'");
+        $count = 0;
+        foreach ($found as $row) {
+            if (self::noWhatsapp((string) ($row['error'] ?? ''))) continue;
+            $update->execute([$now, (int) $row['id']]);
+            $count += $update->rowCount();
+        }
+        return $count;
+    }
+
+    /** True when the phone service said the number has no WhatsApp account. */
+    private static function noWhatsapp(string $error): bool
+    {
+        return stripos($error, 'not registered on whatsapp') !== false;
+    }
+
+    private function todayItem(array $row, string $at): array
+    {
+        return [
+            'name' => (string) $row['name'],
+            'phone' => (string) $row['phone'],
+            'from' => (string) $row['account_name'],
+            'sheet' => (string) ($row['title'] ?? ''),
+            'attempts' => (int) ($row['attempts'] ?? 0),
+            'error' => (string) ($row['error'] ?? ''),
+            'at' => $at,
+        ];
+    }
+
+    /** What happened to one sheet row: its latest send, when it is due, and why it failed or waits. */
+    public function rowStatus(int $sourceId, string $recordId): array
+    {
+        $query = $this->db->prepare('SELECT id, name, phone, message, status, error, attempts, account_name, due_at, created_at FROM whatsapp_sends WHERE source_id = ? AND record_id = ? ORDER BY id DESC LIMIT 1');
+        $query->execute([$sourceId, $recordId]);
+        $row = $query->fetch();
+        if (!$row) {
+            return ['label' => 'Not queued', 'detail' => 'This row has not been queued yet. Select it and press Send.', 'phone' => null, 'from' => null, 'queued_at' => null, 'due_at' => null, 'sent_at' => null, 'attempts' => 0, 'error' => null];
+        }
+        $now = time();
+        $attempts = (int) ($row['attempts'] ?? 0);
+        $maxTries = count(self::RETRY_MINUTES) + 1;
+        $due = $row['due_at'] ? gmdate('c', strtotime((string) $row['due_at']) ?: $now) : null;
+        $from = (string) $row['account_name'];
+        $info = [
+            'label' => 'Sent',
+            'detail' => '',
+            'phone' => (string) $row['phone'],
+            'from' => $from !== '' ? $from : null,
+            'queued_at' => (string) $row['created_at'],
+            'due_at' => null,
+            'sent_at' => null,
+            'attempts' => $attempts,
+            'error' => null,
+        ];
+        switch ((string) $row['status']) {
+            case 'sent':
+                $info['sent_at'] = (string) $row['created_at'];
+                $info['detail'] = 'Delivered to WhatsApp from ' . ($from !== '' ? $from : 'a phone') . '.';
+                break;
+            case 'sending':
+                $info['label'] = 'Sending now';
+                $info['detail'] = 'Being sent right now.';
+                break;
+            case 'held':
+                $info['label'] = 'Held';
+                $info['detail'] = 'Not sent. This number has no country code the phone service can read, so a message could reach the wrong person. Fix the number in the sheet, then it can be queued again.';
+                $info['error'] = self::HELD_NOTE;
+                break;
+            case 'waiting':
+                $info['label'] = 'Waiting';
+                $info['due_at'] = $due;
+                if ($attempts > 0) {
+                    $info['label'] = 'Retrying';
+                    $info['detail'] = 'The phone service did not answer. Try ' . ($attempts + 1) . ' of ' . $maxTries . ' is scheduled for the time below.';
+                    $info['error'] = (string) ($row['error'] ?? '') ?: null;
+                } elseif ($due !== null && strtotime($due) <= $now) {
+                    $info['detail'] = 'It is due now. It goes out on the next run from this phone; keep the page open.';
+                } else {
+                    $info['detail'] = 'Scheduled from ' . ($from !== '' ? $from : 'the chosen phone') . ' at the time below.';
+                }
+                break;
+            case 'failed':
+            case 'blocked':
+                $info['label'] = 'Failed';
+                $info['error'] = (string) ($row['error'] ?? '') ?: null;
+                if (self::noWhatsapp((string) ($row['error'] ?? ''))) {
+                    $info['label'] = 'Not on WhatsApp';
+                    $info['detail'] = 'This number has no WhatsApp account, so sending again cannot help. Check the number in the sheet.';
+                } else {
+                    $info['detail'] = $attempts > 0
+                        ? 'Failed after ' . $attempts . ' tries. Use "Retry failed" in Today to send it again.'
+                        : 'Failed on the first try. Use "Retry failed" in Today to send it again.';
+                }
+                break;
+            default:
+                $info['label'] = (string) $row['status'];
+        }
+        return $info;
+    }
+
+    /** @return array<string, array{status: string, error: string}> record id => pending/sent/failed + error text */
     public function statuses(int $sourceId): array
     {
         $map = [];
         foreach ($this->latestRows($sourceId) as $row) {
             $state = $this->state((string) $row['status']);
-            $map[(string) $row['record_id']] = $state === 'waiting' ? 'pending' : $state;
+            $map[(string) $row['record_id']] = [
+                'status' => $state === 'waiting' ? 'pending' : $state,
+                'error' => (string) ($row['error'] ?? ''),
+            ];
         }
         return $map;
     }
 
-    private function build(int $sourceId): array
+    /** @param array<int, string>|null $recordIds null = every ready row; otherwise only these record IDs */
+    private function build(int $sourceId, ?array $recordIds = null): array
     {
         if ($this->sheets === null) throw new RuntimeException('Open the sheet before sending.');
+        if ($recordIds !== null && !$recordIds) throw new InvalidArgumentException('Select at least one row first.');
+        $only = $recordIds === null ? null : array_flip(array_map('strval', $recordIds));
         $preview = $this->sheets->preview($sourceId);
         $source = $preview['source'];
         $taken = $this->statuses($sourceId);
         $rows = [];
         $skipped = 0;
+        $unsafe = 0;
         foreach ($preview['records'] as $row) {
             if (!empty($row['issues'])) continue;
-            $state = $taken[(string) $row['record_id']] ?? '';
+            if ($only !== null && !isset($only[(string) $row['record_id']])) continue;
+            $state = $taken[(string) $row['record_id']]['status'] ?? '';
             if ($state === 'pending' || $state === 'sent') {
                 $skipped++;
                 continue;
             }
+            if (self::unsafeNumber((string) ($row['values']['phone'] ?? ''))) {
+                $unsafe++;
+                continue;
+            }
             $rows[] = $row;
         }
-        $gap = (int) ($source['delay_minutes'] ?? 0);
-        if ($gap < 1 || $gap > 30) throw new InvalidArgumentException('Choose the gap between messages first.');
+        $gapMin = (int) ($source['delay_minutes'] ?? 0);
+        $gapMax = (int) ($source['delay_max_minutes'] ?? 0);
+        if ($gapMin < 1 || $gapMin > 30) throw new InvalidArgumentException('Choose the shortest gap between messages first.');
+        if ($gapMax === 0) $gapMax = $gapMin;
+        if ($gapMax < $gapMin || $gapMax > 30) throw new InvalidArgumentException('Choose the longest gap from the shortest gap up to 30 minutes.');
         $phones = $this->phones($source);
         if (!$phones) throw new InvalidArgumentException('None of the chosen phones is ready. Pair one on Linked device.');
         if (!$rows) throw new InvalidArgumentException('Every ready row is already waiting or sent.');
         $time = $this->startTime($source);
         $start = $this->startAt($source, $time);
+        $daily = $this->dailyLimit($source['daily_limit'] ?? null);
         return [
-            'slots' => $this->assign($rows, $phones, $start, $gap, $time),
+            'slots' => $this->assign($rows, $phones, $start, $gapMin, $gapMax, $time, $daily),
             'phones' => $phones,
             'start' => $start,
-            'gap' => $gap,
+            'gap' => $gapMin,
+            'gap_min' => $gapMin,
+            'gap_max' => $gapMax,
+            'daily' => $daily,
             'skipped' => $skipped,
+            'unsafe' => $unsafe,
         ];
+    }
+
+    /** The saved per-sheet limit, or the default when none is saved or it is out of range. */
+    private function dailyLimit(mixed $value): int
+    {
+        $limit = (int) $value;
+        return $limit >= 1 && $limit <= WhatsAppSheetService::DAILY_LIMIT_MAX ? $limit : self::DAILY;
+    }
+
+    /** @return array{0: int, 1: int} */
+    private function gapRange(mixed $min, mixed $max): array
+    {
+        $lo = max(1, min(30, (int) ($min ?? 1)));
+        $hi = (int) ($max ?? 0);
+        if ($hi < $lo) $hi = $lo;
+        if ($hi > 30) $hi = 30;
+        return [$lo, $hi];
+    }
+
+    private function gapSeconds(mixed $min, mixed $max): int
+    {
+        [$lo, $hi] = $this->gapRange($min, $max);
+        return random_int($lo, $hi) * 60;
+    }
+
+    /** The sheet's phone choice read from its row, in the same shape phones() expects. */
+    private function sourceSetting(int $sourceId): array
+    {
+        $stmt = $this->db->prepare('SELECT sender_mode, device_id, device_ids FROM whatsapp_sheet_sources WHERE id = ?');
+        $stmt->execute([$sourceId]);
+        $row = $stmt->fetch() ?: [];
+        $ids = json_decode((string) ($row['device_ids'] ?? ''), true);
+        $ids = is_array($ids) ? array_values(array_filter($ids, 'is_string')) : [];
+        if (!$ids && trim((string) ($row['device_id'] ?? '')) !== '') $ids = [trim((string) $row['device_id'])];
+        $mode = (($row['sender_mode'] ?? 'all') === 'pick') ? 'pick' : 'all';
+        return ['sender_mode' => $mode, 'device_ids' => $mode === 'pick' ? $ids : []];
     }
 
     /** @return list<array{id: string, name: string}> */
@@ -224,15 +723,15 @@ final class WhatsAppQueue
         return max($at, $now);
     }
 
-    private function assign(array $rows, array $phones, int $start, int $gap, string $time): array
+    private function assign(array $rows, array $phones, int $start, int $gapMin, int $gapMax, string $time, int $daily): array
     {
         $usage = $this->usage(array_column($phones, 'id'));
         $cursor = [];
         foreach ($phones as $phone) {
             $at = $start;
             $last = $usage[$phone['id']]['last'] ?? 0;
-            if ($last !== 0 && $last + $gap * 60 > $at) $at = $last + $gap * 60;
-            $cursor[$phone['id']] = $this->fit($at, $usage[$phone['id']]['days'], $time);
+            if ($last !== 0 && $last + $gapMin * 60 > $at) $at = $last + $gapMin * 60;
+            $cursor[$phone['id']] = $this->fit($at, $usage[$phone['id']]['days'], $time, $daily);
         }
         $slots = [];
         foreach ($rows as $row) {
@@ -244,18 +743,18 @@ final class WhatsAppQueue
             $day = $this->day($at);
             $usage[$pick['id']]['days'][$day] = ($usage[$pick['id']]['days'][$day] ?? 0) + 1;
             $slots[] = ['row' => $row, 'phone' => $pick, 'at' => $at];
-            $next = $at + $gap * 60;
+            $next = $at + $this->gapSeconds($gapMin, $gapMax);
             if ($this->day($next) !== $day) $next = $this->dayStart($day, 1, $time);
-            $cursor[$pick['id']] = $this->fit($next, $usage[$pick['id']]['days'], $time);
+            $cursor[$pick['id']] = $this->fit($next, $usage[$pick['id']]['days'], $time, $daily);
         }
         return $slots;
     }
 
-    private function fit(int $at, array $days, string $time): int
+    private function fit(int $at, array $days, string $time, int $daily): int
     {
         for ($guard = 0; $guard < 400; $guard++) {
             $day = $this->day($at);
-            if (($days[$day] ?? 0) < self::DAILY) return $at;
+            if (($days[$day] ?? 0) < $daily) return $at;
             $at = $this->dayStart($day, 1, $time);
         }
         return $at;
@@ -343,8 +842,11 @@ final class WhatsAppQueue
             'total' => count($built['slots']),
             'start_at' => gmdate('c', $built['start']),
             'gap' => $built['gap'],
-            'daily' => self::DAILY,
+            'gap_min' => $built['gap_min'] ?? $built['gap'],
+            'gap_max' => $built['gap_max'] ?? $built['gap'],
+            'daily' => $built['daily'],
             'skipped' => $built['skipped'],
+            'unsafe' => $built['unsafe'],
             'phones' => array_values($phones),
             'days' => $dayList,
         ];
@@ -355,7 +857,7 @@ final class WhatsAppQueue
         return match ($status) {
             'sent' => 'sent',
             'failed', 'blocked' => 'failed',
-            default => 'waiting',
+            default => 'waiting', // waiting, sending and held all count as not yet sent
         };
     }
 

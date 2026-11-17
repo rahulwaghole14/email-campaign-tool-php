@@ -1940,9 +1940,16 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   padding-top: 24px;
   border-bottom: 1px solid #edf0eb;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.wa-ov-bars.is-dense {
+  gap: 2px;
+  height: 140px;
+  padding-top: 28px;
 }
 .wa-ov-day {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1950,6 +1957,7 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   justify-content: flex-end;
   height: 100%;
   gap: 6px;
+  overflow: hidden;
 }
 .wa-ov-bar-val {
   font-size: 11px;
@@ -1959,6 +1967,14 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   padding: 1px 6px;
   border-radius: 5px;
   line-height: 1.2;
+  white-space: nowrap;
+}
+.wa-ov-bars.is-dense .wa-ov-bar-val {
+  font-size: 9px;
+  padding: 0 4px;
+  /* Keep full count visible above the narrow bar instead of clipping to "1…" */
+  position: relative;
+  z-index: 1;
 }
 .wa-ov-bar-val.is-zero {
   visibility: hidden;
@@ -1976,6 +1992,10 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   cursor: pointer;
   transition: all 0.2s ease;
 }
+.wa-ov-bars.is-dense .wa-ov-bar-col {
+  max-width: 12px;
+  border-radius: 3px 3px 0 0;
+}
 .wa-ov-bar-col:hover {
   filter: brightness(1.1);
   transform: translateY(-2px);
@@ -1989,10 +2009,47 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   color: #8aa0b8;
   font-weight: 500;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  min-height: 1.2em;
+}
+.wa-ov-bars.is-dense .wa-ov-day small {
+  font-size: 9px;
 }
 .wa-ov-day small.is-today {
   color: #1b7a3a;
   font-weight: 700;
+}
+.wa-ov-day small.is-muted {
+  color: transparent;
+}
+/* Custom tip — native title tooltips sit on the axis and look like overlap. */
+.wa-ov-day.has-tip {
+  position: relative;
+}
+.wa-ov-day.has-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 8px);
+  transform: translateX(-50%) translateY(-4px);
+  background: #142e25;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 6px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 4px 12px rgba(20, 46, 37, 0.18);
+}
+.wa-ov-day.has-tip:hover::after {
+  opacity: 1;
 }
 
 /* ── Health Card & Zero Failures ─────────────────────────────── */
@@ -2114,10 +2171,26 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
 .wa-ov-list {
   display: grid;
   gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+/* Cards in the two-column dashboard grid must not grow with long one-line text. */
+.wa-ov-grid > * {
+  min-width: 0;
+}
+.wa-ov-chat-row {
+  min-width: 0;
+}
+/* Long lists (delivery failures) scroll inside the card instead of making it very tall. */
+.wa-ov-list.is-scroll {
+  max-height: 340px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 .wa-ov-chat-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
@@ -2128,10 +2201,15 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   transition: all 0.15s ease;
   text-align: left;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .wa-ov-chat-row:hover {
   background: #edf7f0;
   border-color: #cbe4d4;
+}
+.wa-ov-chat-row.is-failure {
+  background: #fff7f7;
 }
 .wa-ov-chat-row.is-failure:hover {
   background: #fef2f2;
@@ -2139,9 +2217,10 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
 }
 .wa-ov-chat-left {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 .wa-ov-chat-avatar {
   width: 36px;
@@ -2152,15 +2231,20 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: none;
+  flex: 0 0 36px;
+  margin-top: 1px;
 }
 .wa-ov-chat-meta {
   min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
 }
 .wa-ov-chat-head {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .wa-ov-chat-head strong {
   font-size: 12px;
@@ -2174,6 +2258,7 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   border-radius: 4px;
   background: #e7f6ec;
   color: #166534;
+  flex: none;
 }
 .wa-ov-chat-snippet {
   font-size: 12px;
@@ -2182,12 +2267,26 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
+}
+.wa-ov-chat-row.is-failure .wa-ov-chat-snippet {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
 }
 .wa-ov-chat-time {
   font-size: 11px;
   color: #8aa0b8;
   font-weight: 500;
-  flex: none;
+  flex: 0 0 auto;
+  max-width: 28%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
 }
 
 @media (max-width: 900px) {
@@ -2198,15 +2297,35 @@ body:has(#wa-overview.view:not([hidden])) #app { justify-content: flex-start !im
   .wa-ov-cards { grid-template-columns: 1fr; }
   .wa-ov-quota-strip { flex-direction: column; align-items: stretch; }
 }
-body:has(#wa-sent.view:not([hidden])) { overflow: hidden; }
+html:has(#wa-sent.view:not([hidden])),
+body:has(#wa-sent.view:not([hidden])) {
+  overflow: hidden;
+  height: 100%;
+}
 body:has(#wa-sent.view:not([hidden])) footer { display: none; }
-body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-bottom: 0 !important; }
+body:has(#wa-sent.view:not([hidden])) main {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+body:has(#wa-sent.view:not([hidden])) #app {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 #wa-sent.view:not([hidden]) {
-  height: 100vh;
+  height: 100%;
+  max-height: 100%;
   padding: 10px 0;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 #wa-sent .title-row { flex: 0 0 auto; }
 #wa-sent .eyebrow { display: none; }
@@ -2832,6 +2951,9 @@ body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-
   flex: 0 0 auto;
   margin-bottom: 0 !important;
   padding: 8px 16px !important;
+  position: relative;
+  z-index: 2;
+  background: #f5f7f5;
 }
 .wa-sent-head .eyebrow {
   display: block !important;
@@ -2840,7 +2962,11 @@ body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-
   padding: 0 !important;
   margin-top: 6px !important;
   border-radius: 14px !important;
-  overflow: visible !important;
+  overflow: hidden !important;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
 }
 .wa-sent-toolbar {
   display: flex;
@@ -2851,6 +2977,8 @@ body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-
   background: #fbfdfc;
   border-bottom: 1px solid #e4ebe6;
   position: relative;
+  flex: 0 0 auto;
+  z-index: 2;
 }
 .wa-sent-toolbar-filters {
   display: flex;
@@ -3258,6 +3386,13 @@ body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-
 }
 
 /* Table styling */
+.wa-sent-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f8faf9;
+  box-shadow: 0 1px 0 #e4ebe6;
+}
 .wa-sent-table th {
   background: #f8faf9;
   border-bottom: 1px solid #e4ebe6;
@@ -3285,6 +3420,7 @@ body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-
 }
 .wa-sent-pill.is-waiting { background: #fff4d6; color: #7a5b10; }
 .wa-sent-pill.is-failed { background: #fde8e6; color: #9c3b34; }
+.wa-sent-pill.is-nowa { background: #fff4d6; color: #7a5b10; }
 .wa-sent-pill.is-sent { background: #e6f4ea; color: #1e4632; }
 .wa-sent-row { cursor: pointer; transition: background 0.12s ease; }
 .wa-sent-row:hover { background: #f3f8f5 !important; }
@@ -3313,6 +3449,9 @@ body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-
 .wa-sent-to-name {
   font-size: 11px;
   color: #5f6368;
+  letter-spacing: normal;
+  line-height: 1.45;
+  font-family: "Noto Sans Thai", "Noto Sans", "Segoe UI", sans-serif;
 }
 .wa-sent-from-cell { vertical-align: middle; }
 .wa-sent-device-chip {
@@ -3353,6 +3492,9 @@ body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: middle;
+  letter-spacing: normal;
+  line-height: 1.45;
+  font-family: "Noto Sans Thai", "Noto Sans", "Segoe UI", sans-serif;
 }
 .wa-sent-when-cell {
   display: flex;
@@ -3367,6 +3509,18 @@ body:has(#wa-sent.view:not([hidden])) main { padding-top: 0 !important; padding-
 .wa-sent-when-time {
   font-size: 11px;
   color: #66786c;
+}
+.wa-sent-when-kind {
+  font-size: 10px;
+  font-weight: 700;
+  color: #5b6b62;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.wa-sent-from-note {
+  font-size: 10px;
+  margin-top: 4px;
 }
 .wa-sent-receipt-cell {
   vertical-align: middle;
@@ -3695,8 +3849,9 @@ body[data-channel="whatsapp"] .sheet-schedule-date {
   font-weight: 500;
   color: #202124;
 }
-body[data-channel="whatsapp"] #wa-sheet-delay {
-  min-width: 128px !important;
+body[data-channel="whatsapp"] #wa-sheet-delay,
+body[data-channel="whatsapp"] #wa-sheet-delay-max {
+  min-width: 52px !important;
 }
 body[data-channel="whatsapp"] #sheet-preview .sheet-sender-wrap.sheet-wa-only {
   height: auto !important;
@@ -3762,10 +3917,8 @@ body[data-channel="whatsapp"] .sheet-schedule-cap {
   color: #5f6368;
 }
 body[data-channel="whatsapp"] .sheet-email-only,
-body[data-channel="whatsapp"] #batch-actions,
 body[data-channel="whatsapp"] #reset-processing-btn,
-body[data-channel="whatsapp"] #sheet-status,
-body[data-channel="whatsapp"] #sheet-col-check {
+body[data-channel="whatsapp"] #sheet-status {
   display: none !important;
 }
 #sheet-col-extra[hidden] {
@@ -3817,8 +3970,7 @@ body[data-channel="whatsapp"] section#sheets.in-preview {
 body[data-channel="whatsapp"] #sheet-preview .sheet-email-only,
 body[data-channel="whatsapp"] #sheet-preview .sheet-filter-tabs .sheet-email-only,
 body[data-channel="whatsapp"] #sheet-preview .sheet-controls .sheet-email-only,
-body[data-channel="whatsapp"] #sheet-preview #reset-processing-btn,
-body[data-channel="whatsapp"] #sheet-preview #batch-actions {
+body[data-channel="whatsapp"] #sheet-preview #reset-processing-btn {
   display: none !important;
 }
 
@@ -4094,8 +4246,9 @@ body[data-channel="whatsapp"] .sheet-schedule-date {
   margin: 0 !important;
 }
 
-body[data-channel="whatsapp"] #wa-sheet-delay {
-  min-width: 95px !important;
+body[data-channel="whatsapp"] #wa-sheet-delay,
+body[data-channel="whatsapp"] #wa-sheet-delay-max {
+  min-width: 52px !important;
   height: 30px !important;
   line-height: 30px !important;
   border: none !important;
@@ -4107,6 +4260,13 @@ body[data-channel="whatsapp"] #wa-sheet-delay {
   cursor: pointer !important;
   padding: 0 !important;
   margin: 0 !important;
+}
+body[data-channel="whatsapp"] .sheet-schedule-to,
+body[data-channel="whatsapp"] .sheet-schedule-unit {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #5f6f66 !important;
+  padding: 0 2px !important;
 }
 
 body[data-channel="whatsapp"] .sheet-schedule-divider {
@@ -4481,6 +4641,17 @@ body[data-channel="whatsapp"] #sheet-preview table {
   border-collapse: collapse !important;
 }
 
+/* Checkbox column: pick rows to send only the selected ones */
+body[data-channel="whatsapp"] #sheet-preview th#sheet-col-check,
+body[data-channel="whatsapp"] #sheet-preview td.cell-check {
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  padding-left: 8px !important;
+  padding-right: 4px !important;
+  text-align: center !important;
+}
+
 /* Header Columns */
 body[data-channel="whatsapp"] #sheet-preview th#sheet-col-id {
   width: 65px !important;
@@ -4833,9 +5004,51 @@ body[data-channel="whatsapp"] #wa-sheet-date {
   min-width: 98px !important;
 }
 body[data-channel="whatsapp"] #wa-sheet-time {
-  width: 84px !important;
-  min-width: 84px !important;
+  width: 118px !important;
+  min-width: 118px !important;
   margin-left: 10px !important;
   padding-left: 10px !important;
   border-left: 1px solid #dfe8e3 !important;
 }
+
+/* WhatsApp "Sending status" panel */
+body:not([data-channel="whatsapp"]) #sheet-preview .sheet-controls #wa-today-btn { display: none !important; }
+body[data-channel="whatsapp"] #sheet-preview .sheet-controls #wa-today-btn { display: inline-flex !important; align-items: center; gap: 7px; }
+.wa-today { display: grid; gap: 14px; }
+.wa-today-cards { margin-bottom: 0; }
+.wa-today-progress { display: grid; gap: 4px; }
+.wa-today-progress small { color: #5b6b62; font-size: 12px; }
+.wa-today-call { margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.45; border-left: 4px solid; }
+.wa-today-call.danger { background: #fdecec; color: #8a1c14; border-color: #b42318; }
+.wa-today-call.warn { background: #fff6e5; color: #7a4f00; border-color: #d99a1e; }
+.wa-today-call.info { background: #eef6ff; color: #174a7c; border-color: #3a7bd5; }
+.wa-today-facts { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.wa-today-facts div { background: #f7faf8; border: 1px solid #e3ebe6; border-radius: 10px; padding: 8px 10px; }
+.wa-today-facts dt { font-size: 11px; color: #5b6b62; text-transform: uppercase; letter-spacing: 0.04em; }
+.wa-today-facts dd { margin: 2px 0 0; font-size: 13.5px; color: #14231b; font-weight: 600; }
+.wa-today-section h3 { margin: 0 0 8px; font-size: 11.5px; color: #5b6b62; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.wa-today-days { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 240px; overflow: auto; }
+.wa-today-days li { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 10px; font-size: 13px; }
+.wa-today-days span { color: #33443b; }
+.wa-today-days i { display: block; height: 8px; border-radius: 6px; background: #eef3f0; overflow: hidden; }
+.wa-today-days b { display: block; height: 100%; background: #9cc9ad; border-radius: 6px; }
+.wa-today-days strong { text-align: right; font-variant-numeric: tabular-nums; }
+.wa-today-days li.is-today span { font-weight: 700; color: #14532d; }
+.wa-today-days li.is-today b { background: #1f8f4e; }
+.wa-today-phones td { vertical-align: middle; }
+.wa-today-phones small { display: block; margin-top: 3px; color: #5b6b62; font-size: 11.5px; }
+.wa-cap { height: 6px; border-radius: 6px; background: #e3ebe6; overflow: hidden; min-width: 90px; }
+.wa-cap span { display: block; height: 100%; background: #1f8f4e; }
+.wa-today-tabs { display: flex; margin: 0 0 10px; border: 1px solid #d6e2db; border-radius: 10px; overflow: hidden; width: fit-content; max-width: 100%; flex-wrap: wrap; }
+.wa-today-tabs button { border: 0; background: #fff; color: #33443b; padding: 7px 12px; font-size: 12.5px; cursor: pointer; border-right: 1px solid #d6e2db; }
+.wa-today-tabs button:last-child { border-right: 0; }
+.wa-today-tabs button.active { background: #166534; color: #fff; }
+.wa-today-list { max-height: 260px; overflow: auto; border: 1px solid #e3ebe6; border-radius: 10px; }
+.wa-today-list table { margin: 0; }
+.wa-today-list thead th { position: sticky; top: 0; background: #f7faf8; }
+.wa-today-items th, .wa-today-items td { padding: 7px 10px; }
+.wa-today-items tr.failed td:last-child { color: #b42318; }
+.wa-today-items tr.sent td:last-child { color: #1f8f4e; }
+.wa-today-empty { margin: 8px 0 0; font-size: 13px; color: #5b6b62; }
+.wa-today-warn { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; background: #fff6e5; color: #8a5a00; font-size: 12.5px; }
+.wa-row-detail { margin: 0 0 12px; font-size: 13.5px; line-height: 1.5; color: #14231b; }

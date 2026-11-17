@@ -113,10 +113,13 @@ final class WhatsAppOverviewService
             elseif ($rowStatus === 'waiting') $waiting++;
             elseif ($rowStatus === 'failed') $failed++;
             else continue;
-            $local = (new \DateTimeImmutable('@' . $rowAt))->setTimezone($zone)->format('Y-m-d');
-            if (isset($byDay[$local])) {
-                if ($rowStatus === 'failed') $byDay[$local]['failed']++;
-                else $byDay[$local]['sent']++;
+            // Sends by Day: only real outcomes. Queued/waiting must not inflate the green bar.
+            if ($rowStatus === 'sent' || $rowStatus === 'failed') {
+                $local = (new \DateTimeImmutable('@' . $rowAt))->setTimezone($zone)->format('Y-m-d');
+                if (isset($byDay[$local])) {
+                    if ($rowStatus === 'failed') $byDay[$local]['failed']++;
+                    else $byDay[$local]['sent']++;
+                }
             }
             $key = $this->phoneKey((string) ($row['phone'] ?? ''));
             if ($key === '') continue;
@@ -139,6 +142,7 @@ final class WhatsAppOverviewService
             if (isset($outcomes[$status])) $outcomes[$status]++;
         }
 
+        $limitPerDevice = $this->dailyLimitPerDevice();
         $deviceQuotas = [];
         foreach ($devices as $dev) {
             $dId = (string) ($dev['id'] ?? '');
@@ -151,12 +155,13 @@ final class WhatsAppOverviewService
                 'status' => $dStatus,
                 'phone' => (string) ($dev['phone'] ?? ''),
                 'sent_today' => $sentCount,
-                'limit' => 20,
+                'limit' => $limitPerDevice,
             ];
         }
 
         $selectedSent = $todaySentTotal;
-        $selectedLimit = max(1, count($devices)) * 20;
+        $deviceCount = max(1, count($devices));
+        $selectedLimit = $deviceCount * $limitPerDevice;
         if ($deviceId !== '') {
             $matchedQuota = null;
             foreach ($deviceQuotas as $dq) {
@@ -166,7 +171,7 @@ final class WhatsAppOverviewService
                 }
             }
             $selectedSent = $matchedQuota ? $matchedQuota['sent_today'] : 0;
-            $selectedLimit = 20;
+            $selectedLimit = $limitPerDevice;
         }
 
         $activeSheet = null;
@@ -207,11 +212,23 @@ final class WhatsAppOverviewService
             'today_quota' => [
                 'used' => $selectedSent,
                 'total' => $selectedLimit,
-                'limit_per_device' => 20,
+                'limit_per_device' => $limitPerDevice,
             ],
             'device_quotas' => $deviceQuotas,
             'active_sheet' => $activeSheet,
         ];
+    }
+
+    /** Prefer the sheet daily cap the queue already uses; fall back to 20. */
+    private function dailyLimitPerDevice(): int
+    {
+        try {
+            $value = $this->db->query('SELECT MAX(daily_limit) FROM whatsapp_sheet_sources WHERE daily_limit IS NOT NULL')->fetchColumn();
+            $limit = (int) $value;
+            if ($limit >= 1 && $limit <= 100) return $limit;
+        } catch (\Throwable $e) {
+        }
+        return 20;
     }
 
     private function fromDevice(array $row, string $deviceId, string $deviceName): bool

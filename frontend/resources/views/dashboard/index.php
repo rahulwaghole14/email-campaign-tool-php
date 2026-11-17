@@ -4,7 +4,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 ?>
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL &middot; Email Desk</title><link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=1"><link rel="alternate icon" type="image/png" href="/assets/favicon.png?v=1"><link rel="stylesheet" href="/assets/app.css?v=112"><link rel="stylesheet" href="/assets/wa-sheets.css?v=117"><script>try{var raw=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');var bits=String(raw).split('/');var v=bits[0].replace(/[^a-z0-9-]/gi,'');var sheetId=(bits[1]||'').replace(/[^a-z0-9-]/gi,'');var channel=localStorage.getItem('rsl_channel')||'email';if(channel!=='whatsapp'&&(v==='wa-device'||v==='wa-settings'||v==='wa-overview'||v==='wa-chats'||v==='wa-sent'||v==='message'||v==='wa-compose'))v='overview';if(channel==='whatsapp'&&v==='wa-compose')v='message';if(channel==='whatsapp'&&(v==='wa-home'||v==='wa-sheets'))v='sheets';if(!location.hash&&v==='sheets'&&!sheetId){if(channel==='whatsapp'){var wid=String(localStorage.getItem('rsl_open_wa_sheet')||'').replace(/[^0-9]/g,'');if(wid)sheetId='wa-'+wid;}else sheetId=String(localStorage.getItem('rsl_open_sheet')||'').replace(/[^a-z0-9-]/gi,'');}if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}var sheetOk=v==='sheets'&&sheetId&&((channel==='whatsapp'&&sheetId.indexOf('wa-')===0)||(channel!=='whatsapp'&&sheetId.indexOf('wa-')!==0));if(sheetOk){var keep=document.createElement('style');keep.id='early-sheet-style';keep.textContent='#sheets-directory{display:none!important}#sheet-preview,#sheet-preview[hidden]{display:block!important}#sheets{padding-top:14px!important}';document.head.appendChild(keep);}}catch(e){}</script><script src="/assets/app.js?v=111" defer></script><script src="/assets/sheets.js?v=111" defer></script><script src="/assets/inbox.js?v=82" defer></script><script src="/assets/wa-sheets.js?v=89" defer></script><script src="/assets/wa-device.js?v=19" defer></script><script src="/assets/wa-sent.js?v=9" defer></script><script src="/assets/wa-chats.js?v=28" defer></script><script src="/assets/wa-overview.js?v=7" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RSL &middot; Email Desk</title><link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=1"><link rel="alternate icon" type="image/png" href="/assets/favicon.png?v=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap"><link rel="stylesheet" href="/assets/app.css?v=114"><link rel="stylesheet" href="/assets/wa-sheets.css?v=132"><script>try{var raw=location.hash?location.hash.replace(/^#/,''):(localStorage.getItem('rsl_active_view')||'overview');var bits=String(raw).split('/');var v=bits[0].replace(/[^a-z0-9-]/gi,'');var sheetId=(bits[1]||'').replace(/[^a-z0-9-]/gi,'');var channel=localStorage.getItem('rsl_channel')||'email';if(channel!=='whatsapp'&&(v==='wa-device'||v==='wa-settings'||v==='wa-overview'||v==='wa-chats'||v==='wa-sent'||v==='message'||v==='wa-compose'))v='overview';if(channel==='whatsapp'&&v==='wa-compose')v='message';if(channel==='whatsapp'&&(v==='wa-home'||v==='wa-sheets'))v='sheets';if(!location.hash&&v==='sheets'&&!sheetId){if(channel==='whatsapp'){var wid=String(localStorage.getItem('rsl_open_wa_sheet')||'').replace(/[^0-9]/g,'');if(wid)sheetId='wa-'+wid;}else sheetId=String(localStorage.getItem('rsl_open_sheet')||'').replace(/[^a-z0-9-]/gi,'');}if(v){var s=document.createElement('style');s.id='early-view-style';s.textContent='.view{display:none!important}#'+v+'{display:block!important}';document.head.appendChild(s);}var sheetOk=v==='sheets'&&sheetId&&((channel==='whatsapp'&&sheetId.indexOf('wa-')===0)||(channel!=='whatsapp'&&sheetId.indexOf('wa-')!==0));if(sheetOk){var keep=document.createElement('style');keep.id='early-sheet-style';keep.textContent='#sheets-directory{display:none!important}#sheet-preview,#sheet-preview[hidden]{display:block!important}#sheets{padding-top:14px!important}';document.head.appendChild(keep);}}catch(e){}</script><script src="/assets/app.js?v=111" defer></script><script src="/assets/sheets.js?v=124" defer></script><script src="/assets/inbox.js?v=82" defer></script><script src="/assets/wa-sheets.js?v=124" defer></script><script src="/assets/wa-device.js?v=19" defer></script><script src="/assets/wa-sent.js?v=13" defer></script><script src="/assets/wa-chats.js?v=32" defer></script><script src="/assets/wa-overview.js?v=16" defer></script></head>
 <body class="<?= $isAuthenticated ? 'is-authenticated' : 'is-unauthenticated' ?>">
 <aside><a class="brand" href="/"><img src="/assets/rsl-logo.png?v=52" alt="RSL" class="sidebar-rsl-logo" width="76" height="36"><span>WORKSPACE</span></a><div class="workspace"><span id="desk-title">Email Desk</span><small id="desk-kicker">EMAIL OPERATIONS</small></div><div class="channel-switch" role="tablist" aria-label="Channel"><button type="button" class="channel-btn active" data-channel="email" aria-pressed="true">Email</button><button type="button" class="channel-btn" data-channel="whatsapp" aria-pressed="false">WhatsApp</button></div><div class="sidebar-action-wrap"><button type="button" class="sidebar-compose-btn" data-channel="email" data-view="compose"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg><span>Compose</span></button><button type="button" class="sidebar-compose-btn" data-channel="whatsapp" data-view="message" hidden><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg><span>New message</span></button></div><nav aria-label="Main navigation">
 <button class="nav active" data-view="overview"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Overview</span></button>
@@ -387,9 +387,9 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
         <path d="M4 9h16M4 15h16M10 9v12"></path>
       </svg>
     </span>
-    <div>
-      <div class="eyebrow">YOUR DATA SOURCES</div>
-      <h1>Your sheets</h1>
+  <div>
+    <div class="eyebrow">YOUR DATA SOURCES</div>
+    <h1>Your sheets</h1>
       <p class="muted wa-sheets-desc">Upload a spreadsheet or connect Google Sheets to manage your records.</p>
     </div>
   </div>
@@ -408,7 +408,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
   <div class="queue-header sheet-list-header">
     <div class="sheet-list-title-wrap">
       <div class="sheet-list-title-row">
-        <h2>Saved sheets</h2>
+      <h2>Saved sheets</h2>
         <span id="saved-sheet-count-badge" class="saved-sheet-count-badge">1 source</span>
       </div>
       <p class="muted">Open a source to enter its full workspace.</p>
@@ -470,10 +470,10 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
       <div class="dropzone-box" id="dropzone-box">
         <span class="dropzone-icon-circle" aria-hidden="true">
           <svg class="dropzone-cloud-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/>
-            <path d="M12 12v9"/>
-            <path d="m16 16-4-4-4 4"/>
-          </svg>
+          <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/>
+          <path d="M12 12v9"/>
+          <path d="m16 16-4-4-4 4"/>
+        </svg>
         </span>
         <div class="dropzone-text-group">
           <span class="dropzone-title"><strong>Click to upload</strong> or drag and drop</span>
@@ -537,12 +537,18 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
       <div class="sheet-schedule-pill">
         <svg class="icon icon-gap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <label for="wa-sheet-delay" class="sheet-schedule-label">Gap:</label>
-        <select id="wa-sheet-delay" class="sheet-sender-select" aria-label="Minutes between messages from this phone"></select>
+        <select id="wa-sheet-delay" class="sheet-sender-select" aria-label="Shortest minutes between messages from this phone"></select>
+        <span class="sheet-schedule-to" aria-hidden="true">to</span>
+        <select id="wa-sheet-delay-max" class="sheet-sender-select" aria-label="Longest minutes between messages from this phone"></select>
+        <span class="sheet-schedule-unit" aria-hidden="true">min</span>
+      </div>
+      <div class="sheet-schedule-pill">
+        <label for="wa-sheet-daily" class="sheet-schedule-label">Per device per day:</label>
+        <input type="number" id="wa-sheet-daily" class="sheet-schedule-date" min="1" max="100" step="1" inputmode="numeric" aria-label="Messages per device per day" title="Messages per device per day (1 to 100)">
       </div>
       <div class="sheet-schedule-divider"></div>
       <p id="wa-sheet-cap" class="sheet-schedule-cap"></p>
     </div>
-    <span class="sheet-schedule-tag">Pacing Guard Active</span>
   </div>
 
   <div class="sheet-search-toolbar">
@@ -558,6 +564,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
           <button type="button" class="sheet-tab-btn" data-tab-filter="pending">Pending <span class="tab-count" id="count-pending-records">0</span></button>
           <button type="button" class="sheet-tab-btn" data-tab-filter="sent">Sent <span class="tab-count" id="count-sent-records">0</span></button>
           <button type="button" class="sheet-tab-btn" data-tab-filter="failed">Failed <span class="tab-count" id="count-failed-records">0</span></button>
+          <button type="button" class="sheet-tab-btn sheet-wa-only" data-tab-filter="nowa" hidden>Not on WhatsApp <span class="tab-count" id="count-nowa-records">0</span></button>
           <button type="button" class="sheet-tab-btn" data-tab-filter="issues">Needs attention <span class="tab-count" id="count-issues-records">0</span></button>
           <select id="sheet-status" class="sheet-email-only" aria-label="More status filters">
             <option value="">More filters</option>
@@ -580,10 +587,11 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
       <a id="open-sheet" class="quiet" target="_blank" rel="noopener noreferrer"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><span>Open in Google Sheets</span></a>
       <button id="refresh-sheet" class="quiet"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg><span>Refresh rows</span></button>
       <button type="button" id="sheet-download" class="quiet"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span>Download</span></button>
+      <button type="button" class="quiet" id="wa-today-btn" title="Sending status: sent, left today, and the days ahead"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Sending status</span></button>
       <button type="button" class="primary" id="sheet-bulk-send-btn" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span id="sheet-bulk-send-label">Send all ready</span></button>
       <button type="button" id="reset-processing-btn" class="quiet sheet-email-only" title="Unlock emails that got stuck in processing state" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg><span>Unlock stuck processing</span></button>
     </div>
-  </div><script>try{var bits=(location.hash||'').replace(/^#/,'').split('/');var id=bits[0]==='sheets'?(bits[1]||''):'';if(!location.hash&&(localStorage.getItem('rsl_active_view')||'')==='sheets')id=localStorage.getItem('rsl_open_sheet')||'';id=String(id).replace(/[^a-z0-9-]/gi,'');if(id){var saved=JSON.parse(sessionStorage.getItem('rsl_sheet_counts_'+id)||'null');if(saved){var put=function(n,v){var el=document.getElementById(n);if(el&&v!==undefined&&v!==null&&v!=='')el.textContent=v;};put('count-all-records',saved.all);put('count-ready-records',saved.ready);put('count-sent-records',saved.sent);put('count-issues-records',saved.issues);put('source-title',saved.title);put('source-summary',saved.summary);put('source-edit-note',saved.note);put('sheet-bulk-send-label',saved.bulk);put('sheet-range',saved.range);var bulk=document.getElementById('sheet-bulk-send-btn');if(bulk&&saved.bulk)bulk.hidden=false;}}}catch(e){}</script><div id="batch-actions" class="batch-toolbar sheet-email-only" hidden><div class="batch-info-group"><span id="batch-count-label">0 rows selected</span><button type="button" class="batch-link" id="batch-select-all-sheet">Select all ready across sheet</button><button type="button" class="batch-link" id="batch-clear-btn">Clear selection</button></div><button type="button" class="primary" id="batch-send-btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span>Send selected</span></button></div><div class="table-wrap"><table><thead><tr><th id="sheet-col-check" class="sheet-email-only" style="width:36px;text-align:center"><input type="checkbox" id="sheet-select-all" class="sheet-checkbox" title="Select all valid rows"></th><th id="sheet-col-id">ID / agency</th><th id="sheet-col-extra" hidden>Agency / Name</th><th id="sheet-col-mid">Email</th><th id="sheet-col-next">Subject</th><th id="sheet-col-status">Status</th><th id="sheet-col-actions">Actions</th></tr></thead><tbody id="sheet-rows"></tbody></table></div><div class="sheet-pagination pagination-bar"><label>Rows per page<select id="sheet-size"><option>10</option><option>25</option><option>50</option><option>100</option></select></label><span id="sheet-range" aria-live="polite"></span><button id="sheet-prev" class="quiet">Previous</button><span id="sheet-page"></span><button id="sheet-next" class="quiet">Next</button></div></div>
+  </div><script>try{var bits=(location.hash||'').replace(/^#/,'').split('/');var id=bits[0]==='sheets'?(bits[1]||''):'';if(!location.hash&&(localStorage.getItem('rsl_active_view')||'')==='sheets')id=localStorage.getItem('rsl_open_sheet')||'';id=String(id).replace(/[^a-z0-9-]/gi,'');if(id){var saved=JSON.parse(sessionStorage.getItem('rsl_sheet_counts_'+id)||'null');if(saved){var put=function(n,v){var el=document.getElementById(n);if(el&&v!==undefined&&v!==null&&v!=='')el.textContent=v;};put('count-all-records',saved.all);put('count-ready-records',saved.ready);put('count-sent-records',saved.sent);put('count-issues-records',saved.issues);put('source-title',saved.title);put('source-summary',saved.summary);put('source-edit-note',saved.note);put('sheet-bulk-send-label',saved.bulk);put('sheet-range',saved.range);var bulk=document.getElementById('sheet-bulk-send-btn');if(bulk&&saved.bulk)bulk.hidden=false;}}}catch(e){}</script><div id="batch-actions" class="batch-toolbar" hidden><div class="batch-info-group"><span id="batch-count-label">0 rows selected</span><button type="button" class="batch-link" id="batch-select-all-sheet">Select all ready across sheet</button><button type="button" class="batch-link" id="batch-clear-btn">Clear selection</button></div><button type="button" class="primary" id="batch-send-btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span>Send selected</span></button></div><div class="table-wrap"><table><thead><tr><th id="sheet-col-check" style="width:36px;text-align:center"><input type="checkbox" id="sheet-select-all" class="sheet-checkbox" title="Select all valid rows"></th><th id="sheet-col-id">ID / agency</th><th id="sheet-col-extra" hidden>Agency / Name</th><th id="sheet-col-mid">Email</th><th id="sheet-col-next">Subject</th><th id="sheet-col-status">Status</th><th id="sheet-col-actions">Actions</th></tr></thead><tbody id="sheet-rows"></tbody></table></div><div class="sheet-pagination pagination-bar"><label>Rows per page<select id="sheet-size"><option>10</option><option>25</option><option>50</option><option>100</option></select></label><span id="sheet-range" aria-live="polite"></span><button id="sheet-prev" class="quiet">Previous</button><span id="sheet-page"></span><button id="sheet-next" class="quiet">Next</button></div></div>
 <dialog id="sheet-editor" aria-labelledby="sheet-editor-title"><form id="sheet-edit-form"><div class="queue-header"><div><h2 id="sheet-editor-title">Edit record</h2><p id="edit-record-id" class="muted"></p></div><button type="button" id="close-editor" class="quiet">Close</button></div><p id="edit-record-note" class="muted">Only changed fields are saved. Keep this sheet free of simultaneous edits while saving.</p><div id="edit-fields"></div><p id="edit-error" role="alert" hidden></p><div class="form-footer"><span id="edit-save-note" class="muted">Changes are saved to this source.</span><button type="submit" class="primary" id="save-record">Save changes</button></div></form></dialog>
 </section>
 
@@ -884,7 +892,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
       <div>
         <div class="eyebrow" style="margin-bottom: 2px;">WHATSAPP OPERATIONS</div>
         <h1>Sent</h1>
-        <p class="muted wa-overview-desc">Messages this desk handed to the linked device.</p>
+        <p class="muted wa-overview-desc">Queued and sent messages from this desk. Queued means planned — not delivered yet.</p>
       </div>
     </div>
   </div>
@@ -905,10 +913,10 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
 
         <div class="wa-sent-select-wrap">
           <select id="wa-sent-status" aria-label="Filter by status" class="wa-sent-select">
+            <option value="sent" selected>Sent</option>
             <option value="">All Statuses</option>
-            <option value="sent">Delivered</option>
-            <option value="waiting">Waiting</option>
-            <option value="failed">Failed</option>
+            <option value="waiting">Queued</option>
+            <option value="failed">Failed / Not on WhatsApp</option>
           </select>
           <svg class="icon wa-sent-select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
         </div>
@@ -976,7 +984,7 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
           <button type="button" id="wa-sent-chip-device-close" class="wa-sent-chip-close" aria-label="Clear device filter">&times;</button>
         </span>
         <span id="wa-sent-chip-status" class="wa-sent-chip" hidden>
-          <span id="wa-sent-chip-status-text">Delivered</span>
+          <span id="wa-sent-chip-status-text">Sent</span>
           <button type="button" id="wa-sent-chip-status-close" class="wa-sent-chip-close" aria-label="Clear status filter">&times;</button>
         </span>
       </div>
@@ -988,10 +996,10 @@ $isSetupAllowed = empty(getenv('ADMIN_PASSWORD_HASH')) && in_array($_SERVER['REM
         <thead>
           <tr>
             <th style="width:240px">RECIPIENT (TO)</th>
-            <th style="width:200px">DISPATCHED VIA (FROM)</th>
+            <th style="width:200px">SEND FROM</th>
             <th>MESSAGE PREVIEW</th>
-            <th style="width:150px">WHEN SENT</th>
-            <th style="width:130px">RECEIPT</th>
+            <th style="width:150px">TIME</th>
+            <th style="width:130px">STATUS</th>
             <th style="width:90px; text-align:right">ACTIONS</th>
           </tr>
         </thead>

@@ -7,7 +7,7 @@ use PDO;
 use RuntimeException;
 
 /** Talks to the Message API for the linked phone: picture, linked number, and disconnect. */
-final class DeviceLink
+class DeviceLink
 {
     private ?array $account = null;
 
@@ -283,11 +283,21 @@ final class DeviceLink
         curl_setopt_array($handle, $options);
         $raw = curl_exec($handle);
         $code = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+        $errno = curl_errno($handle);
         curl_close($handle);
         if ($code === 404) return null;
         $data = is_string($raw) ? json_decode($raw, true) : null;
         if (!is_array($data) || $code < 200 || $code >= 300) {
-            throw new RuntimeException('The phone service is not answering right now. Try again in a moment.');
+            $message = 'The phone service is not answering right now. Try again in a moment.';
+            // No answer, a busy service, or a server error can pass; a 4xx or a bad reply will not, so those are not retried.
+            if ($raw === false || $code === 0 || $code === 429 || $code >= 500) {
+                $detail = $raw === false ? 'no answer, curl ' . $errno : 'HTTP ' . $code;
+                throw new PhoneServiceUnavailable($message . ' (' . $detail . ')');
+            }
+            // The service answered and said no: keep what it said, so the reason is visible instead of guessed.
+            $said = is_array($data) ? (string) ($data['error'] ?? $data['message'] ?? $data['detail'] ?? '') : (is_string($raw) ? strip_tags($raw) : '');
+            $said = mb_substr(trim((string) preg_replace('/\s+/', ' ', $said)), 0, 200);
+            throw new RuntimeException('The phone service did not accept this message (HTTP ' . $code . ($said !== '' ? ': ' . $said : '') . ').');
         }
         return $data;
     }

@@ -37,6 +37,19 @@
     return digits ? '+' + digits : 'Unknown';
   }
 
+  function avatarLabel(phone, name) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (digits.startsWith('91')) return '+91';
+    if (digits.startsWith('66')) return '+66';
+    if (digits.length >= 2) return '+' + digits.slice(0, 2);
+    if (name && name.toLowerCase() !== 'you' && !name.startsWith('+')) {
+      const parts = name.trim().split(/\s+/);
+      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return 'WA';
+  }
+
   function pad(n) {
     return String(n).padStart(2, '0');
   }
@@ -196,17 +209,48 @@
     return { label, time: timeStr };
   }
 
-  function statusHtml(status) {
-    if (status === 'waiting') return '<span class="wa-sent-pill is-waiting">Waiting</span>';
-    if (status === 'failed') return '<span class="wa-sent-pill is-failed">Failed</span>';
+  function isNotOnWhatsApp(error) {
+    return /not registered on whatsapp/i.test(String(error || ''));
+  }
+
+  function statusHtml(status, error) {
+    if (status === 'waiting' || status === 'sending') {
+      return '<span class="wa-sent-pill is-waiting" title="Queued for the linked phone">Queued</span>';
+    }
+    if (status === 'held') {
+      return '<span class="wa-sent-pill is-waiting" title="Held until a ready phone can take it">Held</span>';
+    }
+    if (status === 'failed') {
+      if (isNotOnWhatsApp(error)) {
+        return '<span class="wa-sent-pill is-nowa" title="This number is not registered on WhatsApp">Not on WhatsApp</span>';
+      }
+      return '<span class="wa-sent-pill is-failed">Failed</span>';
+    }
     if (status === 'blocked') return '<span class="wa-sent-pill is-failed">Blocked</span>';
+    // "sent" means handed to the linked device — not a WhatsApp delivery receipt.
     return `
-      <span class="wa-sent-status-delivered" title="Delivered">
-        <svg class="wa-tick wa-tick-double" viewBox="0 0 16 15" aria-label="Delivered">
-          <path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.88a.32.32 0 0 1-.484.032l-.358-.325a.32.32 0 0 0-.484.032l-.378.48a.418.418 0 0 0 .036.54l1.32 1.267a.32.32 0 0 0 .484-.034l6.272-8.048a.366.366 0 0 0-.064-.512zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.88a.32.32 0 0 1-.484.032L1.892 7.77a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.255 3.185a.32.32 0 0 0 .484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"/>
+      <span class="wa-sent-status-delivered" title="Handed to the linked phone">
+        <svg class="wa-tick wa-tick-single" viewBox="0 0 16 15" aria-label="Sent">
+          <path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.88a.32.32 0 0 1-.484.032l-.358-.325a.32.32 0 0 0-.484.032l-.378.48a.418.418 0 0 0 .036.54l1.32 1.267a.32.32 0 0 0 .484-.034l6.272-8.048a.366.366 0 0 0-.064-.512z"/>
         </svg>
-        <span>Delivered</span>
+        <span>Sent</span>
       </span>
+    `;
+  }
+
+  function whenHtml(row) {
+    const status = String(row.status || '');
+    const planned = status === 'waiting' || status === 'sending' || status === 'held';
+    const when = formatWhen(row.shown_at || row.due_at || row.created_at);
+    const kind = planned
+      ? 'Scheduled'
+      : (status === 'failed' || status === 'blocked'
+        ? (isNotOnWhatsApp(row.error) ? 'Not on WhatsApp' : 'Attempted')
+        : 'Sent');
+    return `
+      <div class="wa-sent-when-main">${escapeHtml(when.label)}</div>
+      <div class="wa-sent-when-time muted">${escapeHtml(when.time)}</div>
+      <div class="wa-sent-when-kind muted">${escapeHtml(kind)}</div>
     `;
   }
 
@@ -235,15 +279,16 @@
       const hasMultiple = sendCount > 1 && origSnippet && origSnippet !== snippet;
       const pal = avatarPalette(phone);
       const formattedPhone = formatPhone(phone);
-      const when = formatWhen(row.created_at);
+      const badge = avatarLabel(phone, row.name || '');
       const from = row.account_name || 'Whatsapp Campaign';
+      const planned = row.status === 'waiting' || row.status === 'sending' || row.status === 'held';
 
       tr.className = 'wa-sent-row';
       tr.tabIndex = 0;
       tr.innerHTML = `
         <td>
           <span class="wa-sent-to">
-            <span class="wa-chat-avatar" style="background:${pal.bg}; color:${pal.color}; border:1px solid ${pal.border}; font-weight:700;">+91</span>
+            <span class="wa-chat-avatar" style="background:${pal.bg}; color:${pal.color}; border:1px solid ${pal.border}; font-weight:700;">${escapeHtml(badge)}</span>
             <span class="wa-sent-to-details">
               <strong class="wa-sent-to-phone">${escapeHtml(formattedPhone)}</strong>
               ${row.name ? `<span class="wa-sent-to-name muted">${escapeHtml(row.name)}</span>` : ''}
@@ -255,16 +300,16 @@
             <span class="wa-device-dot"></span>
             <span class="wa-device-chip-name">${escapeHtml(from)}</span>
           </span>
+          ${planned ? '<div class="wa-sent-from-note muted">Assigned phone</div>' : ''}
         </td>
         <td class="wa-sent-msg-cell">
           <span class="wa-sent-msg-bubble">${escapeHtml(snippet)}</span>
         </td>
         <td class="wa-sent-when-cell">
-          <div class="wa-sent-when-main">${escapeHtml(when.label)}</div>
-          <div class="wa-sent-when-time muted">${escapeHtml(when.time)}</div>
+          ${whenHtml(row)}
         </td>
         <td class="wa-sent-receipt-cell">
-          ${statusHtml(row.status)}
+          ${statusHtml(row.status, row.error)}
         </td>
         <td class="wa-sent-actions-cell" onclick="event.stopPropagation()">
           <div class="wa-sent-actions-wrap">
@@ -309,11 +354,14 @@
       td.colSpan = 6;
       td.className = 'empty';
       const phone = document.getElementById('wa-sent-phone')?.value || '';
+      const statusFilter = document.getElementById('wa-sent-status')?.value || '';
       td.innerHTML = phone
         ? '<h3>No sends from this phone</h3><p>Rows stay here after the phone is unlinked or blocked.</p>'
-        : (activePreset !== 'all'
-          ? `<h3>No messages found for this date</h3><p>Filtered by: ${escapeHtml(getDateLabel())}. Try choosing a broader date range or All Time.</p>`
-          : '<h3>No WhatsApp sends yet</h3><p>Messages this desk handed to a linked phone appear here.</p>');
+        : (statusFilter === 'sent'
+          ? '<h3>No sent messages yet</h3><p>Queued plans stay under All Statuses / Queued. This list shows messages already handed to a linked phone.</p>'
+          : (activePreset !== 'all'
+            ? `<h3>No messages found for this date</h3><p>Filtered by: ${escapeHtml(getDateLabel())}. Try choosing a broader date range or All Time.</p>`
+            : '<h3>No WhatsApp sends yet</h3><p>Messages this desk handed to a linked phone appear here.</p>'));
       tr.append(td);
       tbody.append(tr);
     }

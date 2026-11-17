@@ -8,6 +8,9 @@ use InvalidArgumentException;
 /** Saved WhatsApp workbooks. Rows never enter the email queue. */
 final class WhatsAppSheetService
 {
+    /** Most messages one phone may send from one sheet in a day. */
+    public const DAILY_LIMIT_MAX = 100;
+
     public const FIELDS = ['id', 'name', 'phone', 'message'];
 
     public function __construct(private PDO $db, private SheetService $sheets, private \Closure $request)
@@ -259,7 +262,7 @@ final class WhatsAppSheetService
             ->execute(['pick', $clean[0], json_encode(array_values($clean)), $id]);
     }
 
-    public function setSchedule(int $id, string $startDate, ?int $delayMinutes, string $startTime = ''): void
+    public function setSchedule(int $id, string $startDate, ?int $delayMinutes, string $startTime = '', ?int $dailyLimit = null, ?int $delayMaxMinutes = null): void
     {
         $this->source($id);
         if ($startTime !== '' && !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $startTime)) {
@@ -275,8 +278,24 @@ final class WhatsAppSheetService
         if ($delayMinutes !== null && ($delayMinutes < 1 || $delayMinutes > 30)) {
             throw new InvalidArgumentException('Set the gap from 1 to 30 minutes.');
         }
-        $this->db->prepare('UPDATE whatsapp_sheet_sources SET start_date = ?, start_time = ?, delay_minutes = ? WHERE id = ?')
-            ->execute([$startDate !== '' ? $startDate : null, $startTime !== '' ? $startTime : null, $delayMinutes, $id]);
+        if ($delayMaxMinutes !== null && ($delayMaxMinutes < 1 || $delayMaxMinutes > 30)) {
+            throw new InvalidArgumentException('Set the longest gap from 1 to 30 minutes.');
+        }
+        if ($delayMinutes !== null && $delayMaxMinutes !== null && $delayMaxMinutes < $delayMinutes) {
+            throw new InvalidArgumentException('The longest gap must be at least the shortest gap.');
+        }
+        if ($dailyLimit !== null && ($dailyLimit < 1 || $dailyLimit > self::DAILY_LIMIT_MAX)) {
+            throw new InvalidArgumentException('Set the messages per day from 1 to ' . self::DAILY_LIMIT_MAX . '.');
+        }
+        // When only the short gap is sent, clear the long gap so old sheets stay on a fixed wait.
+        $max = $delayMaxMinutes;
+        if ($delayMinutes !== null && $max === null) $max = $delayMinutes;
+        $this->db->prepare('UPDATE whatsapp_sheet_sources SET start_date = ?, start_time = ?, delay_minutes = ?, delay_max_minutes = ? WHERE id = ?')
+            ->execute([$startDate !== '' ? $startDate : null, $startTime !== '' ? $startTime : null, $delayMinutes, $max, $id]);
+        // Null means the caller did not send a limit, so the saved one stays.
+        if ($dailyLimit !== null) {
+            $this->db->prepare('UPDATE whatsapp_sheet_sources SET daily_limit = ? WHERE id = ?')->execute([$dailyLimit, $id]);
+        }
     }
 
     private function ensure(): void
@@ -300,6 +319,8 @@ final class WhatsAppSheetService
         $this->addColumn('start_date', 'VARCHAR(10) NULL');
         $this->addColumn('start_time', 'VARCHAR(5) NULL');
         $this->addColumn('delay_minutes', 'INTEGER NULL');
+        $this->addColumn('delay_max_minutes', 'INTEGER NULL');
+        $this->addColumn('daily_limit', 'INTEGER NULL');
     }
 
     private function addColumn(string $name, string $definition): void

@@ -40,16 +40,20 @@
     return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
   }
 
-  function avatarText(phone, name) {
-    if (name && name !== 'You' && !name.startsWith('+')) {
-      const parts = name.trim().split(/\s+/);
-      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-      return parts[0].slice(0, 2).toUpperCase();
-    }
+  function avatarText(phone) {
     const digits = String(phone || '').replace(/\D/g, '');
     if (digits.startsWith('91')) return '+91';
+    if (digits.startsWith('66')) return '+66';
     if (digits.length >= 2) return '+' + digits.slice(0, 2);
     return 'WA';
+  }
+
+  function isNotOnWhatsApp(error) {
+    return /not registered on whatsapp/i.test(String(error || ''));
+  }
+
+  function failLabel(error) {
+    return isNotOnWhatsApp(error) ? 'Not on WhatsApp' : 'Failed';
   }
 
   function getDeviceLabel(chat) {
@@ -80,7 +84,10 @@
         </span>`;
     }).join('');
 
-    const hint = data.device ? '· 20 msg/day limit' : '· 20 msg/day limit per device';
+    const perDevice = today.limit_per_device ?? 20;
+    const hint = data.device
+      ? `· ${perDevice} msg/day limit`
+      : `· ${perDevice} msg/day limit per device`;
 
     return `
       <div class="wa-ov-quota-strip">
@@ -88,7 +95,7 @@
           <span class="status-dot"></span>
           <span class="wa-ov-quota-title">Today's Dispatch Quota:</span>
           <span class="wa-ov-quota-badge">${used} / ${total} messages used</span>
-          <span class="wa-ov-quota-hint">${hint}</span>
+          <span class="wa-ov-quota-hint">${escapeHtml(hint)}</span>
         </div>
         <div class="wa-ov-quota-chips">
           ${chips}
@@ -96,10 +103,11 @@
       </div>`;
   }
 
-  function metricCards(counts, repliesValue, devName) {
+  function metricCards(counts, repliesValue, devName, failNoun = 'Failed') {
     const sent = counts.sent || 0;
     const failed = counts.failed || 0;
     const numbers = counts.numbers || 0;
+    const failTitle = failNoun === 'Not on WhatsApp' ? 'Not on WhatsApp' : 'Failed Sends';
 
     let ratePill = '';
     if (sent > 0 || failed > 0) {
@@ -110,11 +118,13 @@
 
     const failedPill = failed === 0
       ? `<span class="wa-ov-card-pill is-clean">Clean</span>`
-      : `<span class="wa-ov-card-pill is-alert">${failed} Failed</span>`;
+      : `<span class="wa-ov-card-pill is-alert">${failed} ${escapeHtml(failNoun)}</span>`;
 
     const failIconClass = failed > 0 ? 'is-failed has-errors' : 'is-failed';
     const sentSub = devName ? `Handed to ${devName}` : 'Handed to phone successfully';
-    const failSub = failed === 0 ? 'Zero blocked or rejected' : 'Needs review';
+    const failSub = failed === 0
+      ? 'Zero blocked or rejected'
+      : (failNoun === 'Not on WhatsApp' ? 'Numbers without a WhatsApp account' : 'Needs review');
     const repliesNum = Number(repliesValue);
     const repliesSub = (isNaN(repliesNum) || repliesNum === 0) ? 'All incoming replied' : `${repliesNum} unread replies`;
 
@@ -140,7 +150,7 @@
         <!-- Failed Card -->
         <article class="wa-ov-card">
           <div class="wa-ov-card-head">
-            <span>Failed Sends</span>
+            <span>${escapeHtml(failTitle)}</span>
             <div class="wa-ov-card-icon ${failIconClass}" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -188,7 +198,7 @@
       </div>`;
   }
 
-  function renderRing(outcomes, counts) {
+  function renderRing(outcomes, counts, failNoun = 'Failed') {
     const sent = outcomes.sent || 0;
     const waiting = outcomes.waiting || 0;
     const failed = outcomes.failed || 0;
@@ -237,7 +247,7 @@
                 <strong>${waiting}</strong>
               </div>
               <div class="wa-ov-legend-item">
-                <span><span class="wa-ov-legend-dot is-failed"></span> Failed</span>
+                <span><span class="wa-ov-legend-dot is-failed"></span> ${escapeHtml(failNoun)}</span>
                 <strong>${failed}</strong>
               </div>
             </div>
@@ -252,24 +262,38 @@
 
   function renderBars(days) {
     const list = days || [];
+    const dense = list.length > 10;
     const peak = Math.max(1, ...list.map(d => (d.sent || 0) + (d.failed || 0)));
     const peakText = peak > 1 || list.some(d => (d.sent || 0) + (d.failed || 0) > 0)
       ? `Peak: <strong>${peak} msgs</strong>`
       : 'No send activity';
 
-    const items = list.map(day => {
+    const items = list.map((day, index) => {
       const total = (day.sent || 0) + (day.failed || 0);
       const height = total > 0 ? Math.max(12, Math.round((total / peak) * 80)) : 4;
       const hasSends = total > 0;
       const valClass = hasSends ? '' : 'is-zero';
-      const label = day.weekday || day.label;
+      const dayNum = String(day.date || '').slice(8, 10).replace(/^0/, '') || day.label;
+      // Dense (30-day): only numeric day labels — "Today" truncates to "T…" and overlaps the previous day.
+      const label = dense
+        ? dayNum
+        : (day.is_today ? 'Today' : (day.weekday || day.label));
       const todayClass = day.is_today ? 'is-today' : '';
+      const next = list[index + 1];
+      const nextIsToday = !!(next && next.is_today);
+      // Skip a day-number next to Today/active so adjacent labels do not collide.
+      const showLabel = !dense
+        || day.is_today
+        || (hasSends && !nextIsToday)
+        || ((index % 5 === 0 || index === list.length - 1) && !hasSends && !day.is_today && !nextIsToday);
+      const labelClass = todayClass + (showLabel ? '' : ' is-muted');
+      const tip = `${day.is_today ? 'Today · ' : ''}${day.label || day.date || ''}: ${day.sent || 0} sent, ${day.failed || 0} failed`;
 
       return `
-        <div class="wa-ov-day" title="${escapeHtml(day.label)}: ${day.sent || 0} sent, ${day.failed || 0} failed">
+        <div class="wa-ov-day${hasSends || day.is_today ? ' has-tip' : ''}"${hasSends || day.is_today ? ` data-tip="${escapeHtml(tip)}"` : ''}>
           <span class="wa-ov-bar-val ${valClass}">${total}</span>
           <div class="wa-ov-bar-col ${hasSends ? 'has-sends' : ''}" style="height:${height}px;"></div>
-          <small class="${todayClass}">${escapeHtml(label)}</small>
+          <small class="${labelClass}">${showLabel ? escapeHtml(label) : ''}</small>
         </div>`;
     }).join('');
 
@@ -281,13 +305,13 @@
             <span class="wa-ov-subtext">${peakText}</span>
           </div>
 
-          <div class="wa-ov-bars">
+          <div class="wa-ov-bars${dense ? ' is-dense' : ''}">
             ${items}
           </div>
         </div>
 
         <p class="wa-ov-note">
-          Hover over any bar to view hourly dispatch velocity.
+          Green bars are days with sends. Hover a green bar for the day total.
         </p>
       </section>`;
   }
@@ -402,35 +426,46 @@
     const replies = listed.filter((chat) => Number(chat.unread_count) > 0).length;
     const repliesValue = chats === null ? '…' : String(replies);
     const outcomes = data.outcomes || {};
+    const failures = data.failed || [];
+    const noWaCount = failures.filter((item) => isNotOnWhatsApp(item.error)).length;
+    const otherFailCount = failures.length - noWaCount;
+    const failNoun = failures.length > 0 && otherFailCount === 0
+      ? 'Not on WhatsApp'
+      : (noWaCount > 0 && otherFailCount > 0 ? 'Failed / Not on WA' : 'Failed');
 
     // Bottom Left Panel: Failures OR Zero-Failures Health Card + Active Sheet
     let statusPanelHtml = '';
-    const failures = data.failed || [];
     if (failures.length > 0) {
-      const rows = failures.map(item => `
+      const panelTitle = otherFailCount === 0
+        ? `Not on WhatsApp (${failures.length})`
+        : `Delivery Failures (${failures.length})`;
+      const rows = failures.map(item => {
+        const label = failLabel(item.error);
+        const badgeBg = isNotOnWhatsApp(item.error) ? '#fff4d6' : '#fee2e2';
+        const badgeFg = isNotOnWhatsApp(item.error) ? '#7a5b10' : '#991b1b';
+        return `
         <button type="button" class="wa-ov-chat-row is-failure" data-phone="${escapeHtml(item.phone)}">
           <div class="wa-ov-chat-left">
-            <div class="wa-ov-chat-avatar" style="background:#fee2e2; color:#991b1b;">!</div>
+            <div class="wa-ov-chat-avatar" style="background:${badgeBg}; color:${badgeFg};">!</div>
             <div class="wa-ov-chat-meta">
               <div class="wa-ov-chat-head">
                 <strong>${escapeHtml(formatPhone(item.phone))}</strong>
-                <span class="wa-ov-chat-device" style="background:#fee2e2; color:#991b1b;">Failed</span>
+                <span class="wa-ov-chat-device" style="background:${badgeBg}; color:${badgeFg};">${escapeHtml(label)}</span>
               </div>
-              <p class="wa-ov-chat-snippet">${escapeHtml(item.message || 'Failed')}</p>
+              <p class="wa-ov-chat-snippet">${escapeHtml(item.error || item.message || 'Not accepted')}</p>
             </div>
           </div>
-          <span class="wa-ov-chat-time">${escapeHtml(item.error || 'Not accepted')}</span>
-        </button>
-      `).join('');
+        </button>`;
+      }).join('');
 
       statusPanelHtml = `
         <section class="wa-ov-panel">
           <div>
             <div class="wa-ov-panel-header">
-              <h2>Delivery Failures (${failures.length})</h2>
+              <h2>${escapeHtml(panelTitle)}</h2>
               <span class="wa-ov-card-pill is-alert">Needs attention</span>
             </div>
-            <div class="wa-ov-list">${rows}</div>
+            <div class="wa-ov-list is-scroll">${rows}</div>
           </div>
         </section>`;
     } else {
@@ -475,7 +510,7 @@
     if (recentChats.length > 0) {
       chatsHtml = recentChats.map((chat, idx) => {
         const palette = AVATAR_PALETTES[idx % AVATAR_PALETTES.length];
-        const av = avatarText(chat.phone, chat.name);
+        const av = avatarText(chat.phone);
         const devLabel = getDeviceLabel(chat);
         const timeText = timeAgo(chat.last_at);
         return `
@@ -502,10 +537,10 @@
     body.innerHTML = `
       ${renderQuotaStrip(data)}
 
-      ${metricCards(counts, repliesValue, data.device_name)}
+      ${metricCards(counts, repliesValue, data.device_name, failNoun)}
 
       <div class="wa-ov-grid">
-        ${renderRing(outcomes, counts)}
+        ${renderRing(outcomes, counts, failNoun)}
         ${renderBars(data.days || [])}
       </div>
 
@@ -515,7 +550,7 @@
           <div>
             <div class="wa-ov-panel-header">
               <h2>Latest Conversations</h2>
-              <a href="#chats" class="wa-ov-link">View all chats &rarr;</a>
+              <a href="#wa-chats" class="wa-ov-link" data-view="wa-chats">View all chats &rarr;</a>
             </div>
             <div class="wa-ov-list">
               ${chatsHtml}
@@ -530,6 +565,12 @@
         if (phone && window.openWaChatByPhone) {
           window.openWaChatByPhone(phone);
         }
+      });
+    });
+    body.querySelectorAll('a[data-view="wa-chats"]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        window.view?.('wa-chats');
       });
     });
   }

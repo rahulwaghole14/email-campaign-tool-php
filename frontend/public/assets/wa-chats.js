@@ -4,8 +4,14 @@
   let cachedDevices = [];
   let openId = 0;
   let pendingPhone = '';
+  /** Stays set after a Sent/Queued jump until a real chat opens or the user picks one — blocks auto-opening another chat. */
+  let lockEmpty = false;
+  let missPhone = '';
   let listFilter = 'all';
   let sending = false;
+  let loadSeq = 0;
+  // Chats the user just opened. Keeps unread at 0 across the 8s reload until a newer message arrives.
+  const readState = new Map();
 
   const AVATAR_PALETTES = [
     { bg: '#e7f6ec', color: '#166534', border: '#bbf7d0' },
@@ -23,9 +29,36 @@
       .replace(/"/g, '&quot;');
   }
 
+  function phoneDigits(phone) {
+    return String(phone || '').replace(/\D/g, '');
+  }
+
   function phoneKey(phone) {
-    const digits = String(phone || '').replace(/\D/g, '');
+    const digits = phoneDigits(phone);
     return digits.length > 10 ? digits.slice(-10) : digits;
+  }
+
+  /** Same idea as backend sameDigits: full match or longer number ends with the shorter (≥10). */
+  function phonesMatch(left, right) {
+    const a = phoneDigits(left);
+    const b = phoneDigits(right);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const short = a.length <= b.length ? a : b;
+    const long = short === a ? b : a;
+    return short.length >= 10 && long.endsWith(short);
+  }
+
+  function findChatByPhone(want) {
+    const key = phoneKey(want);
+    const raw = phoneDigits(want);
+    return allChats.find((chat) => (
+      phonesMatch(chat.phone, want)
+      || phonesMatch(chat.id, want)
+      || phoneKey(chat.phone) === key
+      || phoneKey(chat.id) === key
+      || (raw && phoneDigits(chat.phone) === raw)
+    )) || null;
   }
 
   function formatPhone(phone) {
@@ -46,14 +79,10 @@
     return AVATAR_PALETTES[total % AVATAR_PALETTES.length];
   }
 
-  function avatarInitials(phone, name) {
-    if (name && name.toLowerCase() !== 'you' && !name.startsWith('+')) {
-      const parts = name.trim().split(/\s+/);
-      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-      return parts[0].slice(0, 2).toUpperCase();
-    }
-    const digits = String(phone || '').replace(/\D/g, '');
+  function avatarInitials(phone) {
+    const digits = phoneDigits(phone);
     if (digits.startsWith('91')) return '+91';
+    if (digits.startsWith('66')) return '+66';
     if (digits.length >= 2) return '+' + digits.slice(0, 2);
     return 'WA';
   }
@@ -139,8 +168,37 @@
     ));
   }
 
+  function activityAt(chat) {
+    const at = Date.parse(String(chat?.last_at || ''));
+    return Number.isFinite(at) ? at : 0;
+  }
+
+  /** Newest activity first, same as WhatsApp. Unread never changes position. */
+  function sortByRecent(rows) {
+    return rows.slice().sort((a, b) => {
+      const diff = activityAt(b) - activityAt(a);
+      if (diff) return diff;
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
+  }
+
+  function applyReadState(rows) {
+    return rows.map((chat) => {
+      const key = String(chat.id || '');
+      const read = readState.get(key);
+      if (!read) return chat;
+      const nextAt = activityAt(chat);
+      if (nextAt > read.at) {
+        readState.delete(key);
+        return chat;
+      }
+      if (Number(chat.unread_count) > 0) return { ...chat, unread_count: 0 };
+      return chat;
+    });
+  }
+
   function scopedChats() {
-    return allChats.filter(fromPhone);
+    return sortByRecent(applyReadState(allChats).filter(fromPhone));
   }
 
   function visibleChats() {
@@ -180,7 +238,7 @@
       const title = displayName(chat);
       const unread = Number(chat.unread_count) || 0;
       const badge = unread > 0 ? `<span class="wa-unread">${unread > 99 ? '99+' : unread}</span>` : '';
-      const initials = avatarInitials(chat.phone, chat.name);
+      const initials = avatarInitials(chat.phone);
       const pal = avatarPalette(chat.phone);
       const devBadge = chatDeviceBadge(chat);
       const lastMsg = chat.last_message || chat.phone || '';
@@ -201,7 +259,11 @@
           ${badge}
         </span>
       `;
-      button.addEventListener('click', () => openThread(chat.id));
+      button.addEventListener('click', () => {
+        lockEmpty = false;
+        missPhone = '';
+        openThread(chat.id);
+      });
       list.append(button);
     }
   }
@@ -214,7 +276,7 @@
     const dev = deviceForChat(chat);
     const devName = dev.name || 'WAC 1';
     const devPhone = dev.phone ? ` (${formatPhone(dev.phone)})` : '';
-    const avatarInit = avatarInitials(chat.phone, chat.name);
+    const avatarInit = avatarInitials(chat.phone);
     const pal = avatarPalette(chat.phone);
 
     const oneTick = '<svg class="wa-tick" viewBox="0 0 16 15" aria-hidden="true"><path d="M10.91 3.316l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.88a.32.32 0 0 1-.484.032L1.892 7.77a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.255 3.185a.32.32 0 0 0 .484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"/></svg>';
@@ -250,7 +312,6 @@
             </p>
           </div>
         </div>
-        <button type="button" class="wa-chat-del-btn" data-action="delete-chat">Delete chat</button>
       </div>
       <div class="wa-chat-stream">${lines || '<p class="muted" style="padding:16px 0;">No messages in this chat.</p>'}</div>
       <form class="wa-chat-compose">
@@ -268,7 +329,6 @@
         <div class="wa-emoji-pop" hidden></div>
       </form>
     `;
-    pane.querySelector('[data-action="delete-chat"]')?.addEventListener('click', () => deleteChat(chat));
     pane.querySelectorAll('.wa-bubble-del').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -320,19 +380,6 @@
     pane.querySelector('.wa-chat-stream')?.scrollTo(0, pane.querySelector('.wa-chat-stream').scrollHeight);
   }
 
-  async function deleteChat(chat) {
-    if (!chat || !chat.phone) return;
-    if (!window.confirm(`Delete the whole chat with ${displayName(chat)} from this desk? Older messages will not come back.`)) return;
-    try {
-      const result = await api('whatsapp/chats/delete', { method: 'POST', body: JSON.stringify({ phone: chat.phone }) });
-      openId = 0;
-      notice(`Chat deleted (${result.messages || 0} messages removed).`);
-      await loadWaChats();
-    } catch (error) {
-      notice(error.message, true);
-    }
-  }
-
   async function deleteMessage(chat, message) {
     if (!chat || !chat.phone || !message) return;
     if (!window.confirm('Delete this message from this desk?')) return;
@@ -347,9 +394,18 @@
     }
   }
 
-  function renderEmptyThread() {
+  function renderEmptyThread(opts = {}) {
     const pane = document.getElementById('wa-chat-thread');
     if (!pane) return;
+    if (opts.miss || lockEmpty) {
+      const shown = missPhone ? formatPhone(missPhone) : '';
+      const title = 'No conversation yet';
+      const note = shown
+        ? `No chat for ${shown} on this desk yet. It appears after the first message is sent.`
+        : 'No chat for this number on this desk yet. It appears after the first message is sent.';
+      pane.innerHTML = `<div class="wa-chat-empty"><p class="wa-empty-title">${escapeHtml(title)}</p><p class="muted">${escapeHtml(note)}</p></div>`;
+      return;
+    }
     const phone = phoneChoice();
     const title = phone.id ? 'No chats from this phone' : 'No chats yet';
     const note = phone.id
@@ -370,12 +426,21 @@
 
   async function openThread(id) {
     openId = id;
+    const before = allChats.find((chat) => chat.id === id) || chats.find((chat) => chat.id === id);
+    if (before) {
+      // Mark read locally. Position stays by last_at; Unread filter simply hides this row.
+      readState.set(String(id), { at: activityAt(before) });
+      before.unread_count = 0;
+    }
     renderList();
     const path = threadPath(id);
     const data = await api(path);
     if (openId !== id) return;
-    const opened = chats.find((chat) => chat.id === id) || allChats.find((chat) => chat.id === id);
-    if (opened) opened.unread_count = 0;
+    const opened = allChats.find((chat) => chat.id === id) || chats.find((chat) => chat.id === id);
+    if (opened) {
+      readState.set(String(id), { at: Math.max(activityAt(opened), readState.get(String(id))?.at || 0) });
+      opened.unread_count = 0;
+    }
     if (data && data.chat && opened) {
       if ((!data.chat.senders || !data.chat.senders.length) && opened.senders && opened.senders.length) {
         data.chat.senders = opened.senders;
@@ -398,16 +463,23 @@
       select.value = '';
       return true;
     }
-    const match = [...select.options].find((option) => (
-      (sender.id && option.value === sender.id) || (sender.name && option.textContent === sender.name)
-    ));
+    const name = String(sender.name || '').trim();
+    const match = [...select.options].find((option) => {
+      if (sender.id && option.value === sender.id) return true;
+      if (!name) return false;
+      const label = String(option.textContent || '').trim();
+      return label === name || label.startsWith(name + ' ') || label.startsWith(name + '(');
+    });
     if (!match) return false;
     select.value = match.value;
     return true;
   }
 
   async function fillPhones() {
-    if (phonesReady) return;
+    if (phonesReady) {
+      if (pendingSender && applySender(pendingSender)) pendingSender = null;
+      return;
+    }
     const select = document.getElementById('wa-chat-phone');
     if (!select) return;
     const current = select.value;
@@ -435,34 +507,58 @@
     const page = document.getElementById('wa-chats');
     if (!page || page.hidden) return;
     if (document.body.dataset.channel !== 'whatsapp') return;
+    const seq = ++loadSeq;
     await fillPhones();
+    if (seq !== loadSeq) return;
     const data = await api('whatsapp/chats');
-    allChats = data.chats || [];
+    if (seq !== loadSeq) return;
+    // Keep WhatsApp-like order: newest activity first. applyReadState stops a just-read chat from flashing unread again.
+    allChats = sortByRecent(applyReadState(data.chats || []));
     if (pendingPhone) {
       const want = pendingPhone;
       pendingPhone = '';
-      const match = allChats.find((chat) => phoneKey(chat.phone) === want || phoneKey(chat.id) === want);
+      const match = findChatByPhone(want);
       openId = match ? match.id : 0;
       renderList();
-      if (match) openThread(match.id);
-      else renderEmptyThread();
+      if (match) {
+        lockEmpty = false;
+        missPhone = '';
+        openThread(match.id);
+      } else {
+        lockEmpty = true;
+        missPhone = want;
+        renderEmptyThread({ miss: true });
+      }
       return;
     }
+    // After a Queued/Sent jump with no chat: keep empty — never fall through to another conversation.
+    if (lockEmpty) {
+      openId = 0;
+      renderList();
+      renderEmptyThread({ miss: true });
+      return;
+    }
+    // Phone filter can hide the open chat. Leaving the Unread filter after reading must not close the thread.
     if (openId && !scopedChats().some((chat) => chat.id === openId)) openId = 0;
     renderList();
-    if (!openId && chats[0]) { openThread(chats[0].id); return; }
+    if (!openId && listFilter === 'all' && chats[0]) { openThread(chats[0].id); return; }
     if (!openId) renderEmptyThread();
   }
 
   window.loadWaChats = () => { loadWaChats().catch(() => renderEmptyThread()); };
   window.openWaChatByPhone = (phone, sender) => {
-    pendingPhone = phoneKey(phone);
+    const raw = String(phone || '').trim();
+    pendingPhone = raw;
+    missPhone = raw;
+    lockEmpty = true;
+    openId = 0;
     pendingSender = sender && (sender.id || sender.name) ? sender : null;
-    if (!pendingSender || !applySender(pendingSender)) {
-      const select = document.getElementById('wa-chat-phone');
-      if (select && !pendingSender) select.value = '';
-    } else {
+    const select = document.getElementById('wa-chat-phone');
+    if (pendingSender && applySender(pendingSender)) {
       pendingSender = null;
+    } else if (select) {
+      // Prefer All devices while resolving so a stale filter cannot hide/swap the target.
+      select.value = '';
     }
     const search = document.getElementById('wa-chat-search');
     if (search) search.value = '';
@@ -480,6 +576,8 @@
   }, 8000);
   document.getElementById('wa-chat-search')?.addEventListener('input', () => renderList());
   document.getElementById('wa-chat-phone')?.addEventListener('change', () => {
+    lockEmpty = false;
+    missPhone = '';
     renderList();
     if (openId && chats.some((chat) => chat.id === openId)) openThread(openId).catch(() => renderEmptyThread());
     else if (chats[0]) openThread(chats[0].id).catch(() => renderEmptyThread());
@@ -487,6 +585,8 @@
   });
   document.querySelectorAll('.wa-filter[data-filter]').forEach((button) => {
     button.addEventListener('click', () => {
+      lockEmpty = false;
+      missPhone = '';
       listFilter = button.dataset.filter || 'all';
       document.querySelectorAll('.wa-filter[data-filter]').forEach((item) => item.classList.toggle('is-on', item === button));
       renderList();

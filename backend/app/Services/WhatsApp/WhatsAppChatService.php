@@ -87,7 +87,7 @@ final class WhatsAppChatService
             if (!is_array($row) || !$this->sameDigits($digits, $this->digits((string) ($row['phone'] ?? '')))) continue;
             $stored = trim((string) ($row['device_id'] ?? ''));
             if ($deviceId !== '' && $stored === $deviceId) { $found = $row; break; }
-            if ($found === null && ($deviceId === '' || $stored === '')) $found = $row;
+            if ($found === null) $found = $row;
         }
         if ($found === null) return null;
         $messages = $this->db->prepare(
@@ -138,6 +138,7 @@ final class WhatsAppChatService
     public function listing(array $input): array
     {
         $this->syncSent();
+        $this->mergeDuplicateChats();
         $search = trim((string) ($input['search'] ?? ''));
         if (mb_strlen($search) > 254) {
             throw new InvalidArgumentException('Search must be at most 254 characters.');
@@ -157,14 +158,20 @@ final class WhatsAppChatService
         $query->execute($params);
         $senders = $this->sendersByPhone();
         $chats = [];
+        $seenPhone = [];
         foreach ($query->fetchAll() as $row) {
             $phone = (string) ($row['phone'] ?? '');
+            $key = $this->digits($phone);
+            if ($key === '') continue;
+            // One list row per contact number — never show the same phone twice.
+            $skip = false;
+            foreach ($seenPhone as $known) {
+                if ($this->sameDigits($key, $known)) { $skip = true; break; }
+            }
+            if ($skip) continue;
+            $seenPhone[] = $key;
             $deviceId = trim((string) ($row['device_id'] ?? ''));
             $matched = $this->sendersFor($phone, $senders);
-            if ($deviceId !== '') {
-                $own = array_values(array_filter($matched, static fn (array $sender): bool => $sender['id'] === $deviceId));
-                if ($own !== []) $matched = $own;
-            }
             $chats[] = [
                 'id' => (int) ($row['id'] ?? 0),
                 'phone' => $phone,
@@ -189,25 +196,21 @@ final class WhatsAppChatService
             $digits = $this->digits((string) ($row['phone'] ?? ''));
             if ($digits !== '') $index[$digits] = $row;
         }
-        $perPhone = [];
-        foreach ($local['chats'] as $chat) {
-            $digits = $this->digits((string) ($chat['phone'] ?? ''));
-            if ($digits !== '') $perPhone[$digits] = ($perPhone[$digits] ?? 0) + 1;
-        }
         $chats = [];
         foreach ($local['chats'] as $chat) {
             $digits = $this->digits((string) ($chat['phone'] ?? ''));
             $match = $index[$digits] ?? null;
             if ($match === null) {
                 foreach ($index as $key => $row) {
-                    if ($this->sameDigits($digits, $key)) { $match = $row; break; }
+                    // Digit-only array keys are read back as integers by PHP, so they are cast to string first.
+                    if ($this->sameDigits($digits, (string) $key)) { $match = $row; break; }
                 }
             }
             if (is_array($match)) {
                 $jid = (string) ($match['remote_jid'] ?? '');
                 if ($jid !== '') {
                     $chat['remote_jid'] = $jid;
-                    if (($perPhone[$digits] ?? 0) < 2) $chat['id'] = $jid;
+                    $chat['id'] = $jid;
                 }
                 $real = $this->contactName((string) ($match['name'] ?? ''));
                 $kept = $this->contactName((string) ($chat['name'] ?? ''));
@@ -227,8 +230,12 @@ final class WhatsAppChatService
             }
             $chats[] = $chat;
         }
+        // Sort by real time of the last message (sent or received). Unread badges never change this order.
         usort($chats, static function (array $a, array $b): int {
-            return strcmp((string) ($b['last_at'] ?? ''), (string) ($a['last_at'] ?? ''));
+            $left = strtotime((string) ($b['last_at'] ?? '')) ?: 0;
+            $right = strtotime((string) ($a['last_at'] ?? '')) ?: 0;
+            if ($left !== $right) return $left <=> $right;
+            return strcmp((string) ($b['id'] ?? ''), (string) ($a['id'] ?? ''));
         });
         return ['chats' => $chats];
     }
@@ -555,25 +562,28 @@ final class WhatsAppChatService
         WhatsAppTables::ensure($this->db);
     }
 
+    /**
+     * One conversation per customer number. Opening the same thread under another linked
+     * phone must reuse the existing row — never create a twin for a different device_id.
+     */
     private function chatId(string $phone, string $name, string $body, string $at, string $deviceId = ''): int
     {
         $deviceId = trim($deviceId);
+        $digits = $this->digits($phone);
         $found = 0;
-        $open = 0;
+        $deviceMatch = 0;
         foreach ($this->db->query('SELECT id, phone, device_id FROM whatsapp_chats')->fetchAll() as $row) {
-            if (!is_array($row) || !$this->sameDigits($this->digits($phone), $this->digits((string) ($row['phone'] ?? '')))) continue;
+            if (!is_array($row) || !$this->sameDigits($digits, $this->digits((string) ($row['phone'] ?? '')))) continue;
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0) continue;
+            if ($found === 0) $found = $id;
             $stored = trim((string) ($row['device_id'] ?? ''));
             if ($deviceId !== '' && $stored === $deviceId) {
-                $found = (int) $row['id'];
+                $deviceMatch = $id;
                 break;
             }
-            if ($stored === '' && $open === 0) $open = (int) $row['id'];
-            if ($deviceId === '' && $found === 0) $found = (int) $row['id'];
         }
-        if ($found === 0 && $deviceId !== '' && $open !== 0) {
-            $this->db->prepare('UPDATE whatsapp_chats SET device_id = ? WHERE id = ?')->execute([$deviceId, $open]);
-            $found = $open;
-        }
+        if ($deviceMatch !== 0) $found = $deviceMatch;
         if ($found === 0) {
             $this->db->prepare('INSERT INTO whatsapp_chats (phone, name, last_message, last_at, device_id) VALUES (?, ?, ?, ?, ?)')->execute([
                 $phone,
@@ -584,10 +594,64 @@ final class WhatsAppChatService
             ]);
             return (int) $this->db->lastInsertId();
         }
+        if ($deviceId !== '') {
+            $stored = $this->db->prepare('SELECT device_id FROM whatsapp_chats WHERE id = ?');
+            $stored->execute([$found]);
+            if (trim((string) $stored->fetchColumn()) === '') {
+                $this->db->prepare('UPDATE whatsapp_chats SET device_id = ? WHERE id = ?')->execute([$deviceId, $found]);
+            }
+        }
         if ($name !== '') {
             $this->db->prepare("UPDATE whatsapp_chats SET name = ? WHERE id = ? AND (name = '' OR name = 'You')")->execute([$name, $found]);
         }
         return $found;
+    }
+
+    /** Fold twin rows for the same phone into one chat and move their messages across. */
+    private function mergeDuplicateChats(): void
+    {
+        $rows = $this->db->query('SELECT id, phone, device_id, last_at FROM whatsapp_chats ORDER BY id ASC')->fetchAll();
+        $groups = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) continue;
+            $digits = $this->digits((string) ($row['phone'] ?? ''));
+            if ($digits === '') continue;
+            $bucket = null;
+            foreach ($groups as $key => $_) {
+                if ($this->sameDigits($digits, (string) $key)) { $bucket = (string) $key; break; }
+            }
+            if ($bucket === null) $bucket = $digits;
+            $groups[$bucket][] = $row;
+        }
+        $move = $this->db->prepare('UPDATE whatsapp_chat_messages SET chat_id = ? WHERE chat_id = ?');
+        $delete = $this->db->prepare('DELETE FROM whatsapp_chats WHERE id = ?');
+        foreach ($groups as $members) {
+            if (count($members) < 2) continue;
+            usort($members, static function (array $a, array $b): int {
+                $ta = strtotime((string) ($b['last_at'] ?? '')) ?: 0;
+                $tb = strtotime((string) ($a['last_at'] ?? '')) ?: 0;
+                if ($ta !== $tb) return $ta <=> $tb;
+                return ((int) ($a['id'] ?? 0)) <=> ((int) ($b['id'] ?? 0));
+            });
+            $keep = (int) ($members[0]['id'] ?? 0);
+            if ($keep <= 0) continue;
+            foreach (array_slice($members, 1) as $extra) {
+                $drop = (int) ($extra['id'] ?? 0);
+                if ($drop <= 0 || $drop === $keep) continue;
+                $move->execute([$keep, $drop]);
+                $delete->execute([$drop]);
+            }
+            $this->refreshChat($keep);
+            if (trim((string) ($members[0]['device_id'] ?? '')) === '') {
+                foreach ($members as $member) {
+                    $device = trim((string) ($member['device_id'] ?? ''));
+                    if ($device === '') continue;
+                    $this->db->prepare('UPDATE whatsapp_chats SET device_id = ? WHERE id = ? AND (device_id IS NULL OR device_id = \'\')')
+                        ->execute([$device, $keep]);
+                    break;
+                }
+            }
+        }
     }
 
     private function knownMessage(int $chatId, string $direction, string $body, string $at, string $externalId): int

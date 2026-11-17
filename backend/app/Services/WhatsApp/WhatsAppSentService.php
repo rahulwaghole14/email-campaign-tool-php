@@ -80,7 +80,7 @@ final class WhatsAppSentService
 
         $where = $conditions ? ' WHERE ' . implode(' AND ', $conditions) : '';
         $query = $this->db->prepare(
-            'SELECT id, phone, name, message, status, error, account_name, device_id, created_at
+            'SELECT id, phone, name, message, status, error, account_name, device_id, due_at, created_at
              FROM whatsapp_sends' . $where . ' ORDER BY id DESC'
         );
         $query->execute($params);
@@ -101,33 +101,24 @@ final class WhatsAppSentService
                 $latest[$key] = $row;
             }
         }
-        $total = count($latest);
-        $pages = max(1, (int) ceil($total / $size));
-        $page = min($page, $pages);
-        $offset = ($page - 1) * $size;
-        $rows = array_slice(array_values($latest), $offset, $size);
-
-        $chatNames = [];
-        try {
-            foreach ($this->db->query("SELECT phone, name FROM whatsapp_chats WHERE name != '' AND name != 'You'")->fetchAll() as $c) {
-                $pk = $this->phoneKey((string) ($c['phone'] ?? ''));
-                if ($pk !== '' && !isset($chatNames[$pk])) {
-                    $chatNames[$pk] = trim((string) $c['name']);
-                }
-            }
-        } catch (\Throwable) {}
-
+        $rows = array_values($latest);
         foreach ($rows as &$row) {
             $row['id'] = (int) ($row['id'] ?? 0);
             $row['phone'] = (string) ($row['phone'] ?? '');
+            // Keep the sheet/send name as stored. Do not replace with WhatsApp profile names.
             $row['name'] = (string) ($row['name'] ?? '');
             $row['message'] = (string) ($row['message'] ?? '');
             $row['status'] = (string) ($row['status'] ?? '');
             $row['error'] = $row['error'] !== null ? (string) $row['error'] : null;
             $row['account_name'] = (string) ($row['account_name'] ?? '');
             $row['device_id'] = (string) ($row['device_id'] ?? '');
+            $row['due_at'] = (string) ($row['due_at'] ?? '');
             $row['created_at'] = (string) ($row['created_at'] ?? '');
             $row['snippet'] = trim((string) preg_replace('/\s+/u', ' ', mb_substr($row['message'], 0, 180)));
+            // Waiting/held rows are planned, not sent yet. Prefer due_at for the time column.
+            $row['shown_at'] = in_array($row['status'], ['waiting', 'sending', 'held'], true) && $row['due_at'] !== ''
+                ? $row['due_at']
+                : $row['created_at'];
 
             $phone = $this->phoneKey($row['phone']);
             $sender = trim($row['device_id']) !== '' ? 'id:' . trim($row['device_id']) : 'name:' . strtolower(trim($row['account_name']));
@@ -135,15 +126,32 @@ final class WhatsAppSentService
             $row['send_count'] = $counts[$key] ?? 1;
             $row['orig_message'] = trim((string) ($orig[$key] ?? $row['message']));
             $row['orig_snippet'] = trim((string) preg_replace('/\s+/u', ' ', mb_substr($row['orig_message'], 0, 180)));
-
-            if ($row['name'] === '' && isset($chatNames[$phone])) {
-                $row['name'] = $chatNames[$phone];
-            }
-            if ($row['name'] === '' && preg_match('/^(?:Hi|Hello|Hey)\s+([A-Za-z]{2,24})\b/i', $row['orig_message'] ?: $row['message'], $m)) {
-                $row['name'] = ucfirst(strtolower($m[1]));
-            }
         }
         unset($row);
+
+        // Sent page: show actually sent first, then failed, then queued/held — newest time within each group.
+        usort($rows, static function (array $a, array $b): int {
+            $rank = static function (string $status): int {
+                return match ($status) {
+                    'sent' => 0,
+                    'failed', 'blocked' => 1,
+                    default => 2,
+                };
+            };
+            $left = $rank((string) ($a['status'] ?? ''));
+            $right = $rank((string) ($b['status'] ?? ''));
+            if ($left !== $right) return $left <=> $right;
+            $ta = strtotime((string) ($a['shown_at'] ?? '')) ?: 0;
+            $tb = strtotime((string) ($b['shown_at'] ?? '')) ?: 0;
+            if ($ta !== $tb) return $tb <=> $ta;
+            return ((int) ($b['id'] ?? 0)) <=> ((int) ($a['id'] ?? 0));
+        });
+
+        $total = count($rows);
+        $pages = max(1, (int) ceil($total / $size));
+        $page = min($page, $pages);
+        $offset = ($page - 1) * $size;
+        $rows = array_slice($rows, $offset, $size);
 
         return [
             'messages' => $rows,

@@ -12,7 +12,7 @@ This work is local only. Do not deploy it, and do not commit it, until asked. Do
 - A phone that is not linked shows **Not linked yet**, **Not linked**, and **Pair**. Pair opens the scan picture on that same row. The picture should appear in about 1 to 3 seconds. **Pair** hides while the picture is open. **Close** puts it back.
 - When that phone connects, the row changes on its own: the line under the name becomes **Linked** (or the phone number when the service sends one), the status becomes **Ready**, the scan picture closes, and **Disconnect** replaces **Pair**. **Disconnect** is only on a connected phone, and it removes only that phone.
 - The phone service currently returns `phone_number` empty even after connect, so the desk shows **Linked** until a number is present.
-- Send from on an open WhatsApp sheet is a dropdown. **All ready phones** uses every phone that is Ready, including a phone that becomes Ready later. Or tick specific phones. The sheet saves that choice. Each selected phone is 20 messages a day. The page shows that count and how many days the ready rows need. A phone that is not ready is left out. The last remaining phone stays selected.
+- Send from on an open WhatsApp sheet is a dropdown. **All ready phones** uses every phone that is Ready, including a phone that becomes Ready later. Or tick specific phones. The sheet saves that choice. Each selected phone sends the **Per day** count set on the sheet (default 20, from 1 to 100). The page shows that count and how many days the ready rows need. A phone that is not ready is left out. The last remaining phone stays selected.
 - The same sheet has **Start** and **Gap**. Start is the day those rows begin. Gap is 1 to 30 minutes between two messages on each selected phone. These values are saved on the sheet. Rows are not sent yet.
 - WhatsApp column mapping, the row table, and Edit record do not include email. The fields are ID, name, phone, and the WhatsApp message.
 - Dashboard has a phone choice next to the date range. **All devices** keeps the totals. Choosing one phone limits Sent, Failed, Numbers, Replies waiting, the ring, the daily bars, and both lists to what that phone sent. It does not change which phone a sheet sends from.
@@ -23,8 +23,9 @@ This work is local only. Do not deploy it, and do not commit it, until asked. Do
 
 **Send all N ready** opens a popup before anything goes out. It shows the start time, the gap, each ready phone with how many rows it gets and its first and last time, and the count for each day. Cancel leaves every row Not sent.
 
+- Tick rows with the checkbox to send only those. The bar shows how many are selected and **Send N selected messages** opens the same popup for just those rows. Rows that are already Waiting or Sent are left out. **Send all N ready** still sends every ready row.
 - Rows stay in sheet order and go to the phone with the earliest free time. Three phones and 19 rows are 7, 6, and 6.
-- Each phone sends at most 20 a day. Rows past that move to the next day at the start time.
+- Each phone sends at most the sheet's **Per day** count a day (default 20). Rows past that move to the next day at the start time.
 - Start is a day and a time. If that time has already passed today, sending starts now.
 - Confirm saves each row as Waiting with its phone and its time. The progress popup shows Sent, Waiting, and Failed for each phone, the next time, and the latest rows.
 - Each phone sends one row at a time, never closer than the gap. A phone that is not ready keeps its rows Waiting until it is ready again.
@@ -45,9 +46,9 @@ The open WhatsApp sheet keeps the workbook and the rows. Send from is a dropdown
 
 A WhatsApp row does not use email. Column mapping does not offer an email field. The table has no Email column. Edit record has no Email box. A workbook may still contain an email column; this desk ignores it. The fields that stay are ID, name, phone, and the WhatsApp message.
 
-- Send from is a dropdown. **All ready phones** uses every phone that is Ready, and a phone that becomes Ready later is included. Or tick the specific phones, one or several. The sheet saves that choice. Each selected phone sends 20 messages a day.
+- Send from is a dropdown. **All ready phones** uses every phone that is Ready, and a phone that becomes Ready later is included. Or tick the specific phones, one or several. The sheet saves that choice. Each selected phone sends the sheet's **Per day** count a day.
 - Start and Gap are on the open sheet and are saved with it. Start is the day those rows begin. Gap is 1 to 30 minutes between two messages on each ready phone.
-- Each ready phone sends at most 20 rows that day. One ready phone is 20 a day. Five ready phones are 100 a day. The sheet shows how many days the ready rows need. Rows past a phone’s 20 move to the next day. Sending those rows is not running yet.
+- Each ready phone sends at most the **Per day** count of rows that day (default 20, set 1 to 100 on the sheet). One ready phone at 20 is 20 a day. Five ready phones at 20 are 100 a day. The sheet shows how many days the ready rows need. Rows past a phone’s 20 move to the next day. Sending those rows is not running yet.
 - A row stays Waiting until its turn, then becomes Sent or Failed. If the number is blocked, the remaining rows do not go out.
 - The phone list itself stays on Linked device. This page only picks the phones and the schedule for these rows.
 

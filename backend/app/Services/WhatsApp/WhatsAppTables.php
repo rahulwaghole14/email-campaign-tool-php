@@ -21,11 +21,20 @@ final class WhatsAppTables
             status VARCHAR(16) NOT NULL,
             updated_at VARCHAR(32) NOT NULL
         )");
+        // Small key-value state for the queue, such as whether sending is paused.
+        $db->exec("CREATE TABLE IF NOT EXISTS whatsapp_queue_state (
+            name VARCHAR(40) NOT NULL PRIMARY KEY,
+            value VARCHAR(255) NOT NULL
+        )");
         self::addColumn($db, 'whatsapp_sends', 'due_at', 'VARCHAR(32) NULL');
         self::addColumn($db, 'whatsapp_sends', 'source_id', 'INTEGER NULL');
         self::addColumn($db, 'whatsapp_sends', 'record_id', 'VARCHAR(160) NULL');
         self::addColumn($db, 'whatsapp_sends', 'device_id', 'VARCHAR(80) NULL');
+        self::addColumn($db, 'whatsapp_sends', 'attempts', 'INTEGER NULL');
         self::addColumn($db, 'whatsapp_chats', 'device_id', 'VARCHAR(80) NULL');
+        // The queue reads each sheet's per-day limit and random gap max, so the cron job needs these columns too.
+        self::addColumn($db, 'whatsapp_sheet_sources', 'daily_limit', 'INTEGER NULL');
+        self::addColumn($db, 'whatsapp_sheet_sources', 'delay_max_minutes', 'INTEGER NULL');
     }
 
     /** @param list<array<string, mixed>> $devices */
@@ -111,6 +120,7 @@ final class WhatsAppTables
     private static function addColumn(PDO $db, string $table, string $name, string $definition): void
     {
         if (!preg_match('/^[a-z_]+$/', $table) || !preg_match('/^[a-z_]+$/', $name)) return;
+        if (!self::tableExists($db, $table)) return;
         $exists = false;
         if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
             $exists = (bool) $db->query('SHOW COLUMNS FROM ' . $table . ' LIKE ' . $db->quote($name))->fetch();
@@ -120,5 +130,13 @@ final class WhatsAppTables
             }
         }
         if (!$exists) $db->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $name . ' ' . $definition);
+    }
+
+    private static function tableExists(PDO $db, string $table): bool
+    {
+        if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+            return (bool) $db->query('SHOW TABLES LIKE ' . $db->quote($table))->fetch();
+        }
+        return (bool) $db->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = " . $db->quote($table))->fetch();
     }
 }

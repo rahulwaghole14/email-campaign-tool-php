@@ -41,7 +41,9 @@
   const canAddress = row => !row.issues?.length && (!('enabled' in row.values) || String(row.values.enabled || '').trim().toUpperCase() === 'YES');
   const isNotSent = row => canAddress(row) && (row.send_status === 'not_queued' || !row.send_status);
   const isPendingRow = row => canAddress(row) && (row.send_status === 'pending' || row.send_status === 'processing');
-  const isFailedRow = row => canAddress(row) && row.send_status === 'failed';
+  const isNoWaError = row => /not registered on whatsapp/i.test(String(row.send_error || row.error || ''));
+  const isFailedRow = row => canAddress(row) && row.send_status === 'failed' && !isNoWaError(row);
+  const isNoWaRow = row => canAddress(row) && row.send_status === 'failed' && isNoWaError(row);
   const waWasSent = row => row.send_status === 'sent' || row.send_status === 'failed';
   const isRowValid = isNotSent;
   const pendingSendIds = () => (records || []).filter(row => canAddress(row) && row.send_status === 'pending').map(row => row.record_id);
@@ -52,6 +54,7 @@
     if (filter === 'ready') return isNotSent(row);
     if (filter === 'pending') return isPendingRow(row);
     if (filter === 'failed') return isFailedRow(row);
+    if (filter === 'nowa') return isNoWaRow(row);
     return row.send_status === filter;
   };
   const syncPill = (label) => {
@@ -522,7 +525,14 @@
       const waBar = $('#batch-actions');
       const waBulk = $('#sheet-bulk-send-btn');
       const waBulkLabel = $('#sheet-bulk-send-label');
-      if (waBar) waBar.hidden = true;
+      const waSelected = selectedIds.size;
+      if (waBar) {
+        waBar.hidden = waSelected === 0;
+        const waCountLabel = $('#batch-count-label');
+        if (waCountLabel) waCountLabel.textContent = `${waSelected} record${waSelected === 1 ? '' : 's'} selected`;
+        const waBatchSpan = $('#batch-send-btn span') || $('#batch-send-btn');
+        if (waBatchSpan) waBatchSpan.textContent = `Send ${waSelected} selected message${waSelected === 1 ? '' : 's'}`;
+      }
       const readyCount = (records || []).filter(isNotSent).length;
       const waitingCount = (records || []).filter(isPendingRow).length;
       const doneCount = (records || []).filter(waWasSent).length;
@@ -762,27 +772,36 @@
 
   let fillingSchedule = false;
 
+  function fillGapSelect(select, blankLabel) {
+    if (!select || select.options.length) return;
+    const blank = element('option', blankLabel);
+    blank.value = '';
+    select.append(blank);
+    for (let minutes = 1; minutes <= 30; minutes += 1) {
+      const option = element('option', String(minutes));
+      option.value = String(minutes);
+      select.append(option);
+    }
+  }
+
   function paintSchedule(sheet) {
     const scheduleEl = document.querySelector('#sheet-preview .sheet-schedule');
     if (scheduleEl) scheduleEl.hidden = sheetMode() !== 'whatsapp';
     const date = $('#wa-sheet-date');
     const delay = $('#wa-sheet-delay');
+    const delayMax = $('#wa-sheet-delay-max');
     if (!date || !delay || sheetMode() !== 'whatsapp') return;
     fillingSchedule = true;
-    if (!delay.options.length) {
-      const blank = element('option', 'Minutes');
-      blank.value = '';
-      delay.append(blank);
-      for (let minutes = 1; minutes <= 30; minutes += 1) {
-        const option = element('option', `${minutes} minute${minutes === 1 ? '' : 's'}`);
-        option.value = String(minutes);
-        delay.append(option);
-      }
-    }
+    fillGapSelect(delay, 'Min');
+    fillGapSelect(delayMax, 'Max');
     date.value = sheet?.start_date || '';
     const time = $('#wa-sheet-time');
     if (time) time.value = sheet?.start_time || '10:00';
-    delay.value = sheet?.delay_minutes ? String(sheet.delay_minutes) : '';
+    const minGap = sheet?.delay_minutes ? String(sheet.delay_minutes) : '';
+    delay.value = minGap;
+    if (delayMax) delayMax.value = sheet?.delay_max_minutes ? String(sheet.delay_max_minutes) : minGap;
+    const daily = $('#wa-sheet-daily');
+    if (daily) daily.value = String(sheet?.daily_limit || 20);
     fillingSchedule = false;
     paintCap();
   }
@@ -792,7 +811,8 @@
     if (!cap || sheetMode() !== 'whatsapp') return;
     const ready = (records || []).filter(isNotSent).length;
     const count = chosenPhoneIds().length;
-    const daily = count * 20;
+    const limit = Number($('#wa-sheet-daily')?.value) || 20;
+    const daily = count * limit;
     const days = ready && daily ? Math.ceil(ready / daily) : 0;
 
     if (!count) {
@@ -801,7 +821,7 @@
       return;
     }
 
-    const perPhone = count === 1 ? '20 a day from 1 phone' : `20 a day × ${count} phones`;
+    const perPhone = count === 1 ? `${limit} per device per day` : `${limit} per device per day × ${count} devices`;
     const dispatchText = `${ready} rows need <strong>${days || 1} day${(days || 1) === 1 ? '' : 's'}</strong>`;
     cap.innerHTML = `<span class="wa-cap-stat">⚡ <strong>${daily} msgs / day</strong></span> &middot; <span>${perPhone}</span> &middot; <span>${dispatchText}</span>`;
     cap.title = `${daily} msgs / day · ${perPhone} · ${ready} rows need ${days || 1} day${(days || 1) === 1 ? '' : 's'}`;
@@ -812,13 +832,34 @@
     const startDate = $('#wa-sheet-date')?.value || '';
     const delayRaw = $('#wa-sheet-delay')?.value || '';
     const delayMinutes = delayRaw === '' ? null : Number(delayRaw);
+    const delayMaxRaw = $('#wa-sheet-delay-max')?.value || '';
+    let delayMaxMinutes = delayMaxRaw === '' ? null : Number(delayMaxRaw);
+    if (delayMinutes !== null && delayMaxMinutes === null) delayMaxMinutes = delayMinutes;
+    if (delayMinutes !== null && delayMaxMinutes !== null && delayMaxMinutes < delayMinutes) {
+      notice('The longest gap must be at least the shortest gap.', true);
+      return;
+    }
     const startTime = $('#wa-sheet-time')?.value || '';
-    await post(sheetApi(`${source.id}/schedule`), {start_date: startDate, start_time: startTime, delay_minutes: delayMinutes});
+    const dailyRaw = $('#wa-sheet-daily')?.value || '';
+    const dailyLimit = dailyRaw === '' ? null : Number(dailyRaw);
+    const saved = await post(sheetApi(`${source.id}/schedule`), {
+      start_date: startDate,
+      start_time: startTime,
+      delay_minutes: delayMinutes,
+      delay_max_minutes: delayMaxMinutes,
+      daily_limit: dailyLimit,
+    });
     source.start_date = startDate || null;
     source.start_time = startTime || null;
     source.delay_minutes = delayMinutes;
+    source.delay_max_minutes = delayMaxMinutes;
+    if (dailyLimit !== null) source.daily_limit = dailyLimit;
     paintCap();
-    notice('Schedule saved for the ready phones.');
+    if (Number(saved?.moved) > 0) {
+      notice('Waiting messages updated with the new random gap.');
+    } else {
+      notice('Schedule saved for the ready phones.');
+    }
   }
 
   $('#wa-sheet-date')?.addEventListener('change', (event) => {
@@ -826,6 +867,17 @@
     busy(event.currentTarget, saveSchedule);
   });
   $('#wa-sheet-delay')?.addEventListener('change', (event) => {
+    if (fillingSchedule || !source?.id) return;
+    const min = Number($('#wa-sheet-delay')?.value || 0);
+    const maxEl = $('#wa-sheet-delay-max');
+    if (maxEl && min && (!maxEl.value || Number(maxEl.value) < min)) maxEl.value = String(min);
+    busy(event.currentTarget, saveSchedule);
+  });
+  $('#wa-sheet-delay-max')?.addEventListener('change', (event) => {
+    if (fillingSchedule || !source?.id) return;
+    busy(event.currentTarget, saveSchedule);
+  });
+  $('#wa-sheet-daily')?.addEventListener('change', (event) => {
     if (fillingSchedule || !source?.id) return;
     busy(event.currentTarget, saveSchedule);
   });
@@ -864,14 +916,16 @@
     const readyCount = records.filter(isNotSent).length;
     const pendingCount = records.filter(isPendingRow).length;
     const failedCount = records.filter(isFailedRow).length;
+    const nowaCount = records.filter(isNoWaRow).length;
     const sentCount = records.filter(r => r.send_status === 'sent').length;
     const issuesCount = records.filter(r => r.issues && r.issues.length > 0).length;
 
-    const cAll = $('#count-all-records'), cReady = $('#count-ready-records'), cPending = $('#count-pending-records'), cFailed = $('#count-failed-records'), cSent = $('#count-sent-records'), cIssues = $('#count-issues-records');
+    const cAll = $('#count-all-records'), cReady = $('#count-ready-records'), cPending = $('#count-pending-records'), cFailed = $('#count-failed-records'), cNowa = $('#count-nowa-records'), cSent = $('#count-sent-records'), cIssues = $('#count-issues-records');
     if (cAll) cAll.textContent = allCount;
     if (cReady) cReady.textContent = readyCount;
     if (cPending) cPending.textContent = pendingCount;
     if (cFailed) cFailed.textContent = failedCount;
+    if (cNowa) cNowa.textContent = nowaCount;
     if (cSent) cSent.textContent = sentCount;
     if (cIssues) cIssues.textContent = issuesCount;
 
@@ -896,7 +950,7 @@
       const validToSend = isRowValid(row);
 
       // Checkbox cell
-      const chkCell = element('td'); chkCell.style.textAlign = 'center';
+      const chkCell = element('td', undefined, 'cell-check'); chkCell.style.textAlign = 'center';
       const chk = element('input', undefined, 'sheet-checkbox');
       chk.type = 'checkbox'; chk.disabled = !validToSend;
       chk.checked = selectedIds.has(row.record_id);
@@ -929,8 +983,13 @@
       } else if (row.send_status === 'not_queued') {
         statusWrap.append(element('span', 'Not sent', 'badge ready'));
       } else if (sheetMode() === 'whatsapp' && ['pending', 'sent', 'failed'].includes(row.send_status)) {
-        const label = {pending: 'Waiting', sent: 'Sent', failed: 'Failed'}[row.send_status];
-        statusWrap.append(element('span', label, `badge ${row.send_status}`));
+        const nowa = row.send_status === 'failed' && isNoWaError(row);
+        const label = row.send_status === 'failed'
+          ? (nowa ? 'Not on WhatsApp' : 'Failed')
+          : ({pending: 'Waiting', sent: 'Sent'}[row.send_status]);
+        const badge = element('span', label, `badge ${nowa ? 'nowa' : row.send_status}`);
+        if (row.send_status === 'failed' && (row.send_error || row.error)) badge.title = String(row.send_error || row.error);
+        statusWrap.append(badge);
       } else {
         statusWrap.append(element('span', row.send_status.replaceAll('_',' '), `badge ${row.send_status}`));
       }
@@ -944,13 +1003,17 @@
       actions.append(edit);
 
       if (sheetMode() === 'whatsapp') {
+        const statusBtn = element('button', 'Status', 'sheet-btn-action');
+        statusBtn.title = 'See what happened to this row';
+        statusBtn.addEventListener('click', () => busy(statusBtn, () => waShowRow(row)));
+        actions.append(statusBtn);
         const idCell = element('td', String(row.record_id || '—'), 'cell-wa-id');
         const nameCell = element('td', String(row.values.name || '—'), 'cell-wa-name');
         nameCell.title = String(row.values.name || '');
         const phoneCell = element('td', String(row.values.phone || '—'), 'cell-wa-phone');
         const messageCell = element('td', String(row.values.message || '—'), 'cell-wa-message');
         messageCell.title = String(row.values.message || '');
-        tr.append(idCell, nameCell, phoneCell, messageCell, status, actions);
+        tr.append(chkCell, idCell, nameCell, phoneCell, messageCell, status, actions);
         $('#sheet-rows').append(tr);
         continue;
       }
@@ -991,7 +1054,7 @@
 
     if (!filtered.length) {
       const row = element('tr'); const td = cell(records.length ? 'No records match your filters.' : 'No records below the header row.');
-      td.colSpan = sheetMode() === 'whatsapp' ? 6 : 7; td.style.textAlign = 'center'; row.append(td); $('#sheet-rows').append(row);
+      td.colSpan = 7; td.style.textAlign = 'center'; row.append(td); $('#sheet-rows').append(row);
     }
     $('#sheet-page').textContent = `Page ${page + 1} of ${pages}`;
     $('#sheet-range').textContent = `${filtered.length ? page * size + 1 : 0}–${Math.min((page + 1) * size,filtered.length)} of ${filtered.length} records`;
@@ -1070,26 +1133,26 @@
       if (titleEl) titleEl.textContent = title || 'Confirm Email Dispatch';
       if (descEl) descEl.textContent = desc || 'Ready to send via configured SMTP.';
 
-      const accounts = (window.currentMailAccounts && window.currentMailAccounts.length > 0)
-        ? window.currentMailAccounts
+          const accounts = (window.currentMailAccounts && window.currentMailAccounts.length > 0)
+            ? window.currentMailAccounts
         : [{ id: 1, name: 'RSL Communications', email: 'ray@rslsolution.com' }];
       const confirmSelect = $('#send-confirm-sender-select');
       if (confirmSelect) {
         // Always repopulate so the dropdown is never blank when the dialog opens
         const prevVal = confirmSelect.value;
-        confirmSelect.replaceChildren();
-        for (const acc of accounts) {
-          const opt = document.createElement('option');
+          confirmSelect.replaceChildren();
+          for (const acc of accounts) {
+            const opt = document.createElement('option');
           opt.value = String(acc.id);
-          opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
-          confirmSelect.append(opt);
-        }
+            opt.textContent = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+            confirmSelect.append(opt);
+          }
         // Restore previous selection or use the active sender
         const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
         const preferredId = (activeSender && activeSender.id) ? String(activeSender.id) : prevVal;
         if (preferredId) confirmSelect.value = preferredId;
         if (!confirmSelect.value && confirmSelect.options.length > 0) confirmSelect.selectedIndex = 0;
-      }
+        }
       const activeSender = window.getActiveSenderAccount ? window.getActiveSenderAccount() : null;
       const fromEl = $('#send-confirm-from');
       if (fromEl) {
@@ -1312,7 +1375,13 @@
     if (modal && typeof modal.close === 'function') modal.close();
   });
 
-  $('#batch-send-btn')?.addEventListener('click', () => {
+  $('#batch-send-btn')?.addEventListener('click', (event) => {
+    if (sheetMode() === 'whatsapp') {
+      const waIds = Array.from(selectedIds);
+      if (!waIds.length) return;
+      busy(event.currentTarget, () => waConfirmSend(waIds));
+      return;
+    }
     performBatchSend(Array.from(selectedIds));
   });
 
@@ -1327,8 +1396,8 @@
     dialog = element('dialog', undefined, 'wa-send-dialog');
     dialog.id = 'wa-send-dialog';
     dialog.setAttribute('aria-labelledby', 'wa-send-title');
-    dialog.innerHTML = '<div class="wa-send-head"><h2 id="wa-send-title"></h2><p id="wa-send-sub"></p></div><div id="wa-send-body"></div><p id="wa-send-note" class="wa-send-note"></p><div class="wa-send-actions"><button type="button" class="wa-send-secondary" id="wa-send-cancel">Cancel</button><button type="button" class="wa-send-primary" id="wa-send-ok">Send</button></div>';
-    dialog.addEventListener('close', () => { clearInterval(waProgressTimer); waProgressTimer = null; });
+    dialog.innerHTML = '<div class="wa-send-head"><h2 id="wa-send-title"></h2><p id="wa-send-sub"></p></div><div id="wa-send-body"></div><p id="wa-send-note" class="wa-send-note"></p><div class="wa-send-actions"><button type="button" class="wa-send-secondary" id="wa-send-pause" hidden>Pause sending</button><button type="button" class="wa-send-secondary" id="wa-send-cancel">Cancel</button><button type="button" class="wa-send-primary" id="wa-send-ok">Send</button></div>';
+    dialog.addEventListener('close', () => { clearInterval(waProgressTimer); waProgressTimer = null; $('#wa-send-pause').hidden = true; });
     document.body.append(dialog);
     return dialog;
   }
@@ -1385,25 +1454,198 @@
     }, 10000);
   }
 
-  async function waConfirmSend() {
+  const waTime = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', {hour: 'numeric', minute: '2-digit'}) : '—';
+  const waLeft = (iso) => {
+    const mins = Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60000));
+    if (mins < 1) return 'less than a minute';
+    const hours = Math.floor(mins / 60);
+    const rest = mins % 60;
+    return hours ? `${hours} h${rest ? ` ${rest} min` : ''}` : `${mins} min`;
+  };
+  let waTodayTab = 'upcoming';
+
+  function waTodayBody(today) {
+    const planned = today.sent + today.left;
+    const pct = planned ? Math.round((today.sent / planned) * 100) : 0;
+    const maxDay = Math.max(1, ...(today.days || []).map((day) => day.count));
+    const callouts = [];
+    if (today.paused) callouts.push(['warn', 'Sending is paused. Nothing goes out until you press Resume. Queued messages stay in the queue.']);
+    if (today.held) callouts.push(['danger', `${today.held} number${today.held === 1 ? ' is' : 's are'} held and will not be sent. Their format has no country code the phone service can read, so a message could reach the wrong person. Fix ${today.held === 1 ? 'it' : 'them'} in the sheet.`]);
+    if (today.overdue) callouts.push(['warn', `${today.overdue} message${today.overdue === 1 ? ' is' : 's are'} late. Sending runs only while this page is open and the phone is connected, so keep it open.`]);
+    if (today.retrying) callouts.push(['info', `${today.retrying} message${today.retrying === 1 ? ' is' : 's are'} trying again because the phone service did not answer.`]);
+    if (today.no_whatsapp) callouts.push(['info', `${today.no_whatsapp} number${today.no_whatsapp === 1 ? ' is' : 's are'} not on WhatsApp. Sending to ${today.no_whatsapp === 1 ? 'it' : 'them'} failed, so ${today.no_whatsapp === 1 ? 'it is' : 'they are'} not retried. Check the Not on WhatsApp tab; many are landlines.`]);
+
+    const facts = [];
+    if (today.left) {
+      facts.push(['Next message', waTime(today.next_at)]);
+      facts.push(['Last today', `${waTime(today.finish_today_at)} (about ${waLeft(today.finish_today_at)} from now)`]);
+    } else {
+      facts.push(['Today', today.sent ? 'Nothing else is due today.' : 'Nothing is scheduled for today.']);
+    }
+    if (today.later) facts.push(['All done', `${waWhen(today.all_done_at)}, with ${today.later} more on later days`]);
+
+    const lists = {
+      upcoming: {label: `Coming up · ${today.left}`, items: today.upcoming, empty: 'Nothing is waiting for today.', state: (item) => item.attempts ? `Try ${item.attempts + 1}` : 'Waiting'},
+      sent: {label: `Sent today · ${today.sent}`, items: today.sent_list, empty: 'Nothing has gone out yet today.', state: () => 'Sent'},
+      failed: {label: `Failed · ${today.failed}`, items: today.failed_list, empty: 'No failed messages.', state: (item) => (/not registered on whatsapp/i.test(String(item.error || '')) ? 'Not on WhatsApp' : `Failed${item.error ? ` · ${item.error}` : ''}`)},
+      nowa: {label: `Not on WhatsApp · ${today.no_whatsapp || 0}`, items: today.no_whatsapp_list || [], empty: 'Every number tried so far has WhatsApp.', state: () => 'Not on WhatsApp'},
+    };
+    if (!lists[waTodayTab]) waTodayTab = 'upcoming';
+    const tabs = Object.entries(lists).map(([key, list]) => `<button type="button" data-wa-tab="${key}" class="${key === waTodayTab ? 'active' : ''}">${escapeHtml(list.label)}</button>`).join('');
+    const current = lists[waTodayTab];
+    const kind = waTodayTab === 'failed' || waTodayTab === 'nowa' ? 'failed' : waTodayTab === 'sent' ? 'sent' : '';
+    const items = current.items.length
+      ? `<div class="wa-today-list"><table class="wa-send-table wa-today-items"><thead><tr><th>Time</th><th>Agency</th><th>Sent from</th><th>Status</th></tr></thead><tbody>${current.items.map((item) => `<tr class="${kind}"><td>${escapeHtml(waTime(item.at))}</td><td>${escapeHtml(item.name || item.phone)}</td><td>${escapeHtml(item.from || '')}</td><td>${escapeHtml(current.state(item))}</td></tr>`).join('')}</tbody></table></div>`
+      : `<p class="wa-today-empty">${escapeHtml(current.empty)}</p>`;
+
+    const days = (today.days || []).length
+      ? `<section class="wa-today-section"><h3>Day by day</h3><ul class="wa-today-days">${today.days.map((day) => {
+          const isToday = day.date === today.date;
+          const width = Math.round((day.count / maxDay) * 100);
+          return `<li class="${isToday ? 'is-today' : ''}" title="${escapeHtml(waTime(day.first_at))} to ${escapeHtml(waTime(day.last_at))}"><span>${escapeHtml(isToday ? 'Today' : waDay(day.date))}</span><i><b style="width:${width}%"></b></i><strong>${day.count}</strong></li>`;
+        }).join('')}</ul></section>`
+      : '';
+
+    const phones = today.phones.length
+      ? `<section class="wa-today-section"><h3>Phones</h3><table class="wa-send-table wa-today-phones"><thead><tr><th>Phone</th><th>Sent today</th><th class="num">Left today</th><th>Next</th><th>Last today</th></tr></thead><tbody>${today.phones.map((phone) => {
+          const width = Math.min(100, Math.round((phone.sent / Math.max(1, phone.cap)) * 100));
+          return `<tr><td>${escapeHtml(phone.name || 'Phone')}</td><td><div class="wa-cap"><span style="width:${width}%"></span></div><small>${phone.sent} of ${phone.cap}</small></td><td class="num">${phone.left}</td><td>${phone.left ? escapeHtml(waTime(phone.next_at)) : '—'}</td><td>${phone.left ? escapeHtml(waTime(phone.last_at)) : '—'}</td></tr>`;
+        }).join('')}</tbody></table></section>`
+      : '';
+
+    return `<div class="wa-today">`
+      + `<div class="wa-send-stats wa-today-cards"><div><strong>${today.sent}</strong><span>Sent today</span></div><div><strong>${today.left}</strong><span>Left today</span></div><div><strong>${today.failed}</strong><span>Failed</span></div><div><strong>${today.later}</strong><span>Later days</span></div></div>`
+      + (planned ? `<div class="wa-today-progress"><div class="wa-send-bar"><span style="width:${pct}%"></span></div><small>${pct}% of today's plan sent</small></div>` : '')
+      + callouts.map(([level, text]) => `<p class="wa-today-call ${level}">${escapeHtml(text)}</p>`).join('')
+      + `<dl class="wa-today-facts">${facts.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`
+      + days
+      + phones
+      + `<section class="wa-today-section"><h3>Messages</h3><div class="wa-today-tabs">${tabs}</div>${items}</section>`
+      + `</div>`;
+  }
+
+  async function waShowToday() {
+    const dialog = waDialog();
+    const cancel = $('#wa-send-cancel');
+    const ok = $('#wa-send-ok');
+    const paint = async () => {
+      const today = await api('whatsapp/sheets/today');
+      const day = new Date(`${today.date}T00:00:00`).toLocaleDateString('en-IN', {weekday: 'short', day: '2-digit', month: 'short'});
+      $('#wa-send-title').textContent = 'Sending status';
+      $('#wa-send-sub').textContent = `${day} · ${today.sent} sent today, ${today.left} still to go today, ${today.later} on later days.`;
+      $('#wa-send-body').innerHTML = waTodayBody(today);
+      $('#wa-send-note').textContent = 'This updates by itself every 10 seconds.';
+      cancel.hidden = today.failed === 0;
+      cancel.disabled = false;
+      cancel.textContent = `Retry ${today.failed} failed`;
+      const pause = $('#wa-send-pause');
+      pause.hidden = false;
+      pause.disabled = false;
+      pause.textContent = today.paused ? 'Resume sending' : 'Pause sending';
+      pause.onclick = async () => {
+        const next = !today.paused;
+        pause.disabled = true;
+        try {
+          await post('whatsapp/sheets/pause', {paused: next});
+          notice(next ? 'Sending paused. Queued messages stay in the queue.' : 'Sending resumed.');
+          if (!next) startWaPump(true);
+          await paint();
+        } catch (error) {
+          notice(error.message, true);
+          pause.disabled = false;
+        }
+      };
+      return today;
+    };
+    $('#wa-send-body').onclick = (event) => {
+      const tab = event.target.closest?.('[data-wa-tab]');
+      if (!tab) return;
+      waTodayTab = tab.dataset.waTab;
+      paint().catch(() => {});
+    };
+    cancel.onclick = async () => {
+      cancel.disabled = true;
+      try {
+        const result = await post('whatsapp/sheets/retry-failed');
+        notice(result.queued ? `${result.queued} failed message${result.queued === 1 ? ' is' : 's are'} back in the queue.` : 'No failed messages to retry.');
+        startWaPump(true);
+        await paint();
+      } catch (error) {
+        notice(error.message, true);
+        cancel.disabled = false;
+      }
+    };
+    ok.textContent = 'Close';
+    ok.disabled = false;
+    ok.onclick = () => dialog.close();
+    if (!dialog.open) dialog.showModal();
+    clearInterval(waProgressTimer);
+    await paint();
+    waProgressTimer = setInterval(() => { paint().catch(() => {}); }, 10000);
+  }
+
+  $('#wa-today-btn')?.addEventListener('click', (event) => busy(event.currentTarget, waShowToday));
+
+  async function waShowRow(row) {
+    const dialog = waDialog();
+    const info = await post(sheetApi(`${source.id}/row`), {record_id: String(row.record_id || '')});
+    const name = String(row.values?.name || '').trim() || 'Row';
+    $('#wa-send-title').textContent = `${info.label} · ${name}`;
+    $('#wa-send-sub').textContent = `Record ${row.record_id || '—'}`;
+    const facts = [
+      ['Phone', info.phone],
+      ['Sent from', info.from],
+      ['Queued', info.queued_at ? waWhen(info.queued_at) : ''],
+      ['Scheduled for', info.due_at ? waWhen(info.due_at) : ''],
+      ['Sent at', info.sent_at ? waWhen(info.sent_at) : ''],
+      ['Tries', info.queued_at ? `${info.attempts} so far` : ''],
+    ].filter(([, value]) => value);
+    const table = `<table class="wa-send-table"><tbody>${facts.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('')}</tbody></table>`;
+    const reason = info.error ? `<p class="wa-today-warn">Phone service said: ${escapeHtml(info.error)}</p>` : '';
+    $('#wa-send-body').onclick = null;
+    $('#wa-send-body').innerHTML = `<p class="wa-row-detail">${escapeHtml(info.detail)}</p>${reason}${table}`;
+    $('#wa-send-note').textContent = '';
+    const cancel = $('#wa-send-cancel');
+    cancel.hidden = true;
+    cancel.onclick = null;
+    const ok = $('#wa-send-ok');
+    ok.textContent = 'Close';
+    ok.disabled = false;
+    ok.onclick = () => dialog.close();
+    clearInterval(waProgressTimer);
+    if (!dialog.open) dialog.showModal();
+  }
+
+  async function waConfirmSend(recordIds = null) {
     if (!source?.id) return;
+    if (recordIds && !recordIds.length) {
+      notice('Select at least one row first.', true);
+      return;
+    }
     if (!chosenPhoneIds().length) {
       notice('Pick at least one ready phone in "Send from".', true);
       return;
     }
-    if (!$('#wa-sheet-delay')?.value) {
-      notice('Choose the gap between messages first.', true);
+    if (!$('#wa-sheet-delay')?.value || !$('#wa-sheet-delay-max')?.value) {
+      notice('Choose the shortest and longest gap between messages first.', true);
       return;
     }
     await saveSchedule();
     const sourceId = source.id;
-    const plan = await post(sheetApi(`${sourceId}/plan`));
+    const scope = recordIds ? {record_ids: recordIds} : {};
+    const plan = await post(sheetApi(`${sourceId}/plan`), scope);
     const dialog = waDialog();
     const phoneWord = plan.phones.length === 1 ? 'phone' : 'phones';
-    $('#wa-send-title').textContent = `Send ${plan.total} rows from ${plan.phones.length} ${phoneWord}`;
-    $('#wa-send-sub').textContent = `Starts ${waWhen(plan.start_at)} · ${plan.gap} minute${plan.gap === 1 ? '' : 's'} between messages on each phone · ${plan.daily} a day per phone`;
+    const gapMin = Number(plan.gap_min || plan.gap || 0);
+    const gapMax = Number(plan.gap_max || plan.gap || 0);
+    const gapText = gapMin === gapMax
+      ? `${gapMin} minute${gapMin === 1 ? '' : 's'} between messages on each phone`
+      : `random ${gapMin}–${gapMax} minutes between messages on each phone`;
+    $('#wa-send-title').textContent = `Send ${plan.total} ${recordIds ? 'selected ' : ''}rows from ${plan.phones.length} ${phoneWord}`;
+    $('#wa-send-sub').textContent = `Starts ${waWhen(plan.start_at)} · ${gapText} · ${plan.daily} a day per phone`;
     $('#wa-send-body').innerHTML = waPlanBody(plan);
-    $('#wa-send-note').textContent = plan.skipped ? `${plan.skipped} row${plan.skipped === 1 ? ' is' : 's are'} already waiting or sent and ${plan.skipped === 1 ? 'is' : 'are'} left out.` : '';
+    const leftOut = [plan.skipped ? `${plan.skipped} row${plan.skipped === 1 ? ' is' : 's are'} already waiting or sent and ${plan.skipped === 1 ? 'is' : 'are'} left out.` : '', plan.unsafe ? `${plan.unsafe} number${plan.unsafe === 1 ? ' has' : 's have'} no country code the phone service can read, so ${plan.unsafe === 1 ? 'it is' : 'they are'} not sent. Fix in the sheet.` : ''].filter(Boolean);
+    $('#wa-send-note').textContent = leftOut.join(' ');
     const cancel = $('#wa-send-cancel');
     cancel.hidden = false;
     cancel.onclick = () => dialog.close();
@@ -1415,8 +1657,9 @@
       cancel.hidden = true;
       ok.textContent = 'Scheduling…';
       try {
-        const queued = await post(sheetApi(`${sourceId}/queue`));
+        const queued = await post(sheetApi(`${sourceId}/queue`), scope);
         notice(`${queued.queued} rows are waiting to send from ${queued.phones.length} ${queued.phones.length === 1 ? 'phone' : 'phones'}.`);
+        if (recordIds) selectedIds.clear();
         await openSource(sourceId, true);
         startWaPump(true);
         await waShowProgress(sourceId);
