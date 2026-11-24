@@ -41,7 +41,7 @@
     if (addBtn) {
       const isFull = devices.length >= slots;
       addBtn.disabled = isFull;
-      addBtn.title = isFull ? 'All slots in use. Disconnect or delete a phone to add more.' : 'Add another device';
+      addBtn.title = isFull ? 'All slots in use. Free a slot before adding another phone.' : 'Add another device';
     }
 
     const capLabel = document.getElementById('wa-capacity-label');
@@ -215,7 +215,7 @@
     const state = document.getElementById('wa-device-state');
     if (busy) return;
     const label = device.phone || device.name || 'this phone';
-    if (!confirm('Disconnect ' + label + '? The other phones stay linked.')) return;
+    if (!confirm('Disconnect ' + label + '? It stays in your list so you can Pair the same phone again. Sending from this phone stops until you Pair.')) return;
     busy = true;
     try {
       if (pairing === device.id) pairing = '';

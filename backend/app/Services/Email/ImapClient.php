@@ -50,14 +50,8 @@ final class ImapClient
         try {
             $this->sendCommand($connection, "SELECT INBOX");
 
-            // Per-mailbox cursor so one account's UIDs never block another.
-            if ($this->accountId) {
-                $stmt = $this->db->prepare('SELECT MAX(uid) AS max_uid FROM inbox_emails WHERE mail_account_id = ?');
-                $stmt->execute([(int) $this->accountId]);
-            } else {
-                $stmt = $this->db->query('SELECT MAX(uid) AS max_uid FROM inbox_emails');
-            }
-            $maxUid = (int) ($stmt->fetchColumn() ?: 0);
+            // Per-mailbox cursor: include suppressed UIDs so skipped LinkedIn mail still advances sync.
+            $maxUid = $this->syncCursorUid();
 
             $searchRes = $this->sendCommand($connection, "UID SEARCH ALL");
             $uids = [];
@@ -89,10 +83,14 @@ final class ImapClient
 
                 foreach ($batchUids as $uid) {
                     $emailData = $this->fetchMessage($connection, $uid);
-                    if ($emailData) {
-                        $this->saveEmail($emailData);
-                        $newCount++;
+                    if (!$emailData) continue;
+                    // LinkedIn notifications are not campaign mail — suppress UID and do not store.
+                    if (self::isLinkedInSender((string) ($emailData['from_email'] ?? ''))) {
+                        $this->suppressUid((int) $uid);
+                        continue;
                     }
+                    $this->saveEmail($emailData);
+                    $newCount++;
                 }
             }
 
@@ -232,6 +230,30 @@ final class ImapClient
             || str_contains($subj, 'returned to sender');
     }
 
+    /** LinkedIn notification senders — not stored or shown on the campaign desk. */
+    public static function isLinkedInSender(string $email): bool
+    {
+        return str_contains(strtolower($email), 'linkedin.com');
+    }
+
+    /**
+     * Delete every stored LinkedIn inbox row and suppress their UIDs so sync does not re-import them.
+     * @return array{ok: bool, removed: int}
+     */
+    public function purgeLinkedInEmails(): array
+    {
+        $rows = $this->db->query(
+            "SELECT id FROM inbox_emails WHERE LOWER(from_email) LIKE '%linkedin.com%'"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $removed = 0;
+        foreach ($rows as $row) {
+            if ($this->deleteLocal((int) ($row['id'] ?? 0))) {
+                $removed++;
+            }
+        }
+        return ['ok' => true, 'removed' => $removed];
+    }
+
     /**
      * Replace a stored MIME boundary stub with the delivery notice from the HTML part.
      *
@@ -285,7 +307,11 @@ final class ImapClient
         $search = trim((string) ($query['search'] ?? ''));
         $status = trim((string) ($query['status'] ?? ''));
         $category = trim((string) ($query['category'] ?? 'primary'));
-        if (!in_array($category, ['primary', 'linkedin', 'bounces', 'all'], true)) {
+        // LinkedIn is no longer a desk category — map old clients to Client Replies.
+        if ($category === 'linkedin') {
+            $category = 'primary';
+        }
+        if (!in_array($category, ['primary', 'bounces', 'all'], true)) {
             $category = 'primary';
         }
 
@@ -295,12 +321,11 @@ final class ImapClient
         $bounceSql = "(LOWER(from_email) LIKE '%mailer-daemon%' OR LOWER(from_email) LIKE '%postmaster%' OR LOWER(from_name) LIKE '%mail delivery%' OR LOWER(subject) LIKE '%undelivered%' OR LOWER(subject) LIKE '%delivery failed%' OR LOWER(subject) LIKE '%failure notice%' OR LOWER(subject) LIKE '%returned to sender%')";
         $linkedinSql = "LOWER(from_email) LIKE '%linkedin.com%'";
 
+        // Never list LinkedIn rows (residuals or legacy).
+        $conditions[] = "NOT ({$linkedinSql})";
+
         if ($category === 'primary') {
             $conditions[] = "NOT {$bounceSql}";
-            $conditions[] = "NOT ({$linkedinSql})";
-        } elseif ($category === 'linkedin') {
-            $conditions[] = "NOT {$bounceSql}";
-            $conditions[] = $linkedinSql;
         } elseif ($category === 'bounces') {
             $conditions[] = $bounceSql;
         }
@@ -382,7 +407,9 @@ final class ImapClient
         $stmtLinkedin->execute($baseParams);
         $totalLinkedin = (int) $stmtLinkedin->fetchColumn();
 
-        $totalPrimary = max(0, $totalAll - $totalBounces - $totalLinkedin);
+        // "All" excludes LinkedIn so the desk never surfaces those notifications.
+        $totalVisible = max(0, $totalAll - $totalLinkedin);
+        $totalPrimary = max(0, $totalVisible - $totalBounces);
 
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
@@ -393,12 +420,9 @@ final class ImapClient
         // Calculate unread count strictly within the scoped mailbox criteria
         $unreadConditions = ["is_read = 0", "archived_at IS NULL"];
         $unreadParams = [];
+        $unreadConditions[] = "NOT ({$linkedinSql})";
         if ($category === 'primary') {
             $unreadConditions[] = "NOT {$bounceSql}";
-            $unreadConditions[] = "NOT ({$linkedinSql})";
-        } elseif ($category === 'linkedin') {
-            $unreadConditions[] = "NOT {$bounceSql}";
-            $unreadConditions[] = $linkedinSql;
         } elseif ($category === 'bounces') {
             $unreadConditions[] = $bounceSql;
         }
@@ -470,9 +494,8 @@ final class ImapClient
             'category' => $category,
             'category_counts' => [
                 'primary' => $totalPrimary,
-                'linkedin' => $totalLinkedin,
                 'bounces' => $totalBounces,
-                'all' => $totalAll
+                'all' => $totalVisible,
             ],
             'pagination' => [
                 'page' => $page,
@@ -1050,6 +1073,46 @@ final class ImapClient
         return $saved;
     }
 
+    /** Highest UID already processed for this mailbox (stored or intentionally skipped). */
+    private function syncCursorUid(): int
+    {
+        $accountId = (int) ($this->accountId ?? 0);
+        $inboxMax = 0;
+        $suppressedMax = 0;
+        try {
+            if ($accountId > 0) {
+                $stmt = $this->db->prepare('SELECT MAX(uid) FROM inbox_emails WHERE mail_account_id = ?');
+                $stmt->execute([$accountId]);
+                $inboxMax = (int) ($stmt->fetchColumn() ?: 0);
+                $sup = $this->db->prepare('SELECT MAX(uid) FROM inbox_suppressed_uids WHERE mail_account_id = ?');
+                $sup->execute([$accountId]);
+                $suppressedMax = (int) ($sup->fetchColumn() ?: 0);
+            } else {
+                $inboxMax = (int) ($this->db->query('SELECT MAX(uid) FROM inbox_emails')->fetchColumn() ?: 0);
+                $suppressedMax = (int) ($this->db->query('SELECT MAX(uid) FROM inbox_suppressed_uids')->fetchColumn() ?: 0);
+            }
+        } catch (\Throwable) {
+            // Table may be missing on a fresh install before migrate.
+        }
+        return max($inboxMax, $suppressedMax);
+    }
+
+    private function suppressUid(int $uid, ?int $accountId = null): void
+    {
+        $accountId = ($accountId !== null && $accountId > 0) ? $accountId : (int) ($this->accountId ?? 1);
+        if ($accountId <= 0 || $uid <= 0) return;
+        try {
+            $this->db->prepare('INSERT IGNORE INTO inbox_suppressed_uids (mail_account_id, uid, created_at) VALUES (?, ?, ?)')
+                ->execute([$accountId, $uid, gmdate('c')]);
+        } catch (\Throwable) {
+            try {
+                $this->db->prepare('INSERT OR IGNORE INTO inbox_suppressed_uids (mail_account_id, uid, created_at) VALUES (?, ?, ?)')
+                    ->execute([$accountId, $uid, gmdate('c')]);
+            } catch (\Throwable) {
+            }
+        }
+    }
+
     private function isSuppressedUid(int $uid): bool
     {
         if (!$this->accountId) return false;
@@ -1091,19 +1154,9 @@ final class ImapClient
             }
         }
 
-        $accountId = (int) ($row['mail_account_id'] ?? 0);
+        $accountId = !empty($row['mail_account_id']) ? (int) $row['mail_account_id'] : (int) ($this->accountId ?? 1);
         $uid = (int) ($row['uid'] ?? 0);
-        if ($accountId > 0 && $uid > 0) {
-            try {
-                $this->db->prepare('INSERT IGNORE INTO inbox_suppressed_uids (mail_account_id, uid, created_at) VALUES (?, ?, ?)')
-                    ->execute([$accountId, $uid, gmdate('c')]);
-            } catch (\Throwable) {
-                try {
-                    $this->db->prepare('INSERT OR IGNORE INTO inbox_suppressed_uids (mail_account_id, uid, created_at) VALUES (?, ?, ?)')
-                        ->execute([$accountId, $uid, gmdate('c')]);
-                } catch (\Throwable) {}
-            }
-        }
+        $this->suppressUid($uid, $accountId);
 
         $del = $this->db->prepare('DELETE FROM inbox_emails WHERE id = ?');
         $del->execute([$id]);

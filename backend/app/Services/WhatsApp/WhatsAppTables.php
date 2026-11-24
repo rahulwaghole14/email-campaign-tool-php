@@ -35,6 +35,59 @@ final class WhatsAppTables
         // The queue reads each sheet's per-day limit and random gap max, so the cron job needs these columns too.
         self::addColumn($db, 'whatsapp_sheet_sources', 'daily_limit', 'INTEGER NULL');
         self::addColumn($db, 'whatsapp_sheet_sources', 'delay_max_minutes', 'INTEGER NULL');
+        // Per-sheet pause: Resume on one sheet must not start another sheet's waiting rows.
+        self::addColumn($db, 'whatsapp_sheet_sources', 'paused', 'INTEGER NOT NULL DEFAULT 0');
+        // Desk Disconnect holds the slot (same device_id) until Pair — never DELETE the Message API device.
+        self::addColumn($db, 'whatsapp_devices', 'held', 'INTEGER NOT NULL DEFAULT 0');
+        self::migrateGlobalPause($db);
+    }
+
+    /** Mark a phone disconnected on this desk without deleting its Message API slot. */
+    public static function holdDevice(PDO $db, string $deviceId): void
+    {
+        self::ensure($db);
+        $id = trim($deviceId);
+        if ($id === '' || !preg_match('/^[A-Za-z0-9-]{8,80}$/', $id)) return;
+        $now = gmdate('c');
+        $upd = $db->prepare("UPDATE whatsapp_devices SET held = 1, status = 'disconnected', updated_at = ? WHERE device_id = ?");
+        $upd->execute([$now, $id]);
+        if ($upd->rowCount() > 0) return;
+        $db->prepare("INSERT INTO whatsapp_devices (device_id, name, phone, status, updated_at, held) VALUES (?, 'Phone', NULL, 'disconnected', ?, 1)")
+            ->execute([$id, $now]);
+    }
+
+    /** Clear a desk hold so Pair / reconnect can show Ready again on the same device_id. */
+    public static function releaseHold(PDO $db, string $deviceId): void
+    {
+        self::ensure($db);
+        $id = trim($deviceId);
+        if ($id === '') return;
+        $db->prepare('UPDATE whatsapp_devices SET held = 0, updated_at = ? WHERE device_id = ?')
+            ->execute([gmdate('c'), $id]);
+    }
+
+    /** @return array<string, true> device_id => true for phones held by desk Disconnect */
+    public static function heldIds(PDO $db): array
+    {
+        self::ensure($db);
+        $out = [];
+        foreach ($db->query('SELECT device_id FROM whatsapp_devices WHERE held = 1')->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $id = trim((string) ($row['device_id'] ?? ''));
+            if ($id !== '') $out[$id] = true;
+        }
+        return $out;
+    }
+
+    /** Move the old account-wide pause onto every sheet once, then drop the global flag. */
+    private static function migrateGlobalPause(PDO $db): void
+    {
+        if (!self::tableExists($db, 'whatsapp_queue_state') || !self::tableExists($db, 'whatsapp_sheet_sources')) return;
+        $global = $db->query("SELECT value FROM whatsapp_queue_state WHERE name = 'paused'")->fetchColumn();
+        if ($global === false) return;
+        if ((string) $global === '1') {
+            $db->exec('UPDATE whatsapp_sheet_sources SET paused = 1');
+        }
+        $db->exec("DELETE FROM whatsapp_queue_state WHERE name = 'paused'");
     }
 
     /** @param list<array<string, mixed>> $devices */
@@ -43,8 +96,8 @@ final class WhatsAppTables
         self::ensure($db);
         $now = gmdate('c');
         $seen = [];
-        $find = $db->prepare('SELECT status FROM whatsapp_devices WHERE device_id = ?');
-        $insert = $db->prepare('INSERT INTO whatsapp_devices (device_id, name, phone, status, updated_at) VALUES (?, ?, ?, ?, ?)');
+        $find = $db->prepare('SELECT status, phone, held FROM whatsapp_devices WHERE device_id = ?');
+        $insert = $db->prepare('INSERT INTO whatsapp_devices (device_id, name, phone, status, updated_at, held) VALUES (?, ?, ?, ?, ?, 0)');
         $update = $db->prepare('UPDATE whatsapp_devices SET name = ?, phone = ?, status = ?, updated_at = ? WHERE device_id = ?');
         foreach ($devices as $device) {
             if (!is_array($device)) continue;
@@ -57,11 +110,16 @@ final class WhatsAppTables
             $phone = trim((string) ($device['phone'] ?? ''));
             $phone = $phone !== '' ? $phone : null;
             $find->execute([$id]);
-            $current = $find->fetchColumn();
+            $current = $find->fetch(PDO::FETCH_ASSOC);
             if ($current === false) {
                 $insert->execute([$id, $name, $phone, $status, $now]);
             } else {
-                if ((string) $current === 'blocked') $status = 'blocked';
+                if ((string) ($current['status'] ?? '') === 'blocked') $status = 'blocked';
+                // Desk Disconnect holds the slot: keep Not linked until Pair, even if the phone service still says connected.
+                if ((int) ($current['held'] ?? 0) === 1 && $status === 'ready') $status = 'disconnected';
+                // Keep the last known number when the live list omits it (common for blocked/idle phones).
+                $kept = trim((string) ($current['phone'] ?? ''));
+                if ($phone === null && $kept !== '') $phone = $kept;
                 $update->execute([$name, $phone, $status, $now, $id]);
             }
             $seen[] = $id;

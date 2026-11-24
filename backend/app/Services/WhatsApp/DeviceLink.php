@@ -16,7 +16,7 @@ class DeviceLink
 
     private int $slotLimit = 5;
 
-    public function __construct(private PDO $db)
+    public function __construct(protected PDO $db)
     {
     }
 
@@ -55,11 +55,12 @@ class DeviceLink
 
     public function connectedDevice(): ?array
     {
+        $held = WhatsAppTables::heldIds($this->db);
         foreach ($this->devices() as $row) {
             if (($row['status'] ?? '') !== 'connected') continue;
             $uuid = trim((string) ($row['device_uuid'] ?? ''));
             $name = trim((string) ($row['device_name'] ?? ''));
-            if ($uuid === '') return null;
+            if ($uuid === '' || isset($held[$uuid])) continue;
             return ['device_uuid' => $uuid, 'device_name' => $name];
         }
         return null;
@@ -69,10 +70,13 @@ class DeviceLink
     {
         $device = null;
         $target = $targetDeviceId !== null ? trim($targetDeviceId) : '';
+        $held = WhatsAppTables::heldIds($this->db);
         foreach ($this->devices() as $row) {
             if (($row['status'] ?? '') !== 'connected') continue;
             $id = trim((string) ($row['device_id'] ?? $row['device_uuid'] ?? ''));
             $name = trim((string) ($row['device_name'] ?? ''));
+            // Desk Disconnect holds the slot — do not send until Pair clears the hold.
+            if ($id !== '' && isset($held[$id])) continue;
             if ($target !== '') {
                 if ($id === $target) {
                     $device = ['device_id' => $id, 'name' => $name];
@@ -102,12 +106,123 @@ class DeviceLink
 
     public function roster(): array
     {
+        $held = WhatsAppTables::heldIds($this->db);
         $rows = [];
         foreach ($this->devices() as $row) {
-            $rows[] = $this->rowShape($row);
+            $shaped = $this->rowShape($row);
+            // Desk Disconnect: keep the same device_id, show Not linked, and block sends until Pair.
+            if (isset($held[$shaped['id']])) $shaped['status'] = 'disconnected';
+            $rows[] = $shaped;
         }
         WhatsAppTables::saveRoster($this->db, $rows);
         return ['devices' => $rows, 'slots' => $this->slotLimit];
+    }
+
+    /**
+     * Devices for Sent/Chats filter dropdowns: live Linked slots, blocked phones, and senders
+     * still present in Sent/Chats history (so deleted slots used by a campaign stay filterable).
+     * @return array{devices: list<array{id: string, name: string, phone: ?string, active: bool, status: string}>}
+     */
+    public function filterList(): array
+    {
+        WhatsAppTables::ensure($this->db);
+        // Snapshot local numbers first — roster sync can omit phone and used to wipe them.
+        $keptPhones = [];
+        foreach ($this->db->query('SELECT device_id, phone FROM whatsapp_devices')->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $id = trim((string) ($row['device_id'] ?? ''));
+            $phone = trim((string) ($row['phone'] ?? ''));
+            if ($id !== '' && $phone !== '') $keptPhones[$id] = $phone;
+        }
+
+        $live = [];
+        try {
+            foreach ($this->roster()['devices'] as $device) {
+                if (!is_array($device)) continue;
+                $id = trim((string) ($device['id'] ?? ''));
+                if ($id !== '') $live[$id] = $device;
+            }
+        } catch (RuntimeException) {
+            // Phone service down: still list what we know locally.
+        }
+
+        $byId = [];
+        // Blocked only from local store — disconnected 19th reconnect clutter stays out unless live/Sent needs it.
+        foreach ($this->db->query('SELECT device_id, name, phone, status FROM whatsapp_devices')->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $id = trim((string) ($row['device_id'] ?? ''));
+            if ($id === '' || (string) ($row['status'] ?? '') !== 'blocked') continue;
+            $phone = trim((string) ($row['phone'] ?? ''));
+            if ($phone === '') $phone = $keptPhones[$id] ?? '';
+            $byId[$id] = [
+                'id' => $id,
+                'name' => trim((string) ($row['name'] ?? '')) ?: 'Phone',
+                'phone' => $phone !== '' ? $phone : null,
+                'status' => 'blocked',
+            ];
+        }
+
+        foreach ($live as $id => $device) {
+            $phone = trim((string) ($device['phone'] ?? ''));
+            if ($phone === '') $phone = $byId[$id]['phone'] ?? ($keptPhones[$id] ?? '');
+            $name = trim((string) ($device['name'] ?? ''));
+            $byId[$id] = [
+                'id' => $id,
+                'name' => $name !== '' ? $name : ($byId[$id]['name'] ?? 'Phone'),
+                'phone' => $phone !== '' ? $phone : null,
+                'status' => (string) ($device['status'] ?? ($byId[$id]['status'] ?? 'disconnected')),
+            ];
+        }
+
+        // Keep filter rows for senders that still have Sent history (earlier days). No remaining sends = drop.
+        try {
+            foreach ($this->db->query(
+                "SELECT device_id, MAX(account_name) AS name FROM whatsapp_sends WHERE status = 'sent' AND device_id IS NOT NULL AND device_id <> '' GROUP BY device_id"
+            )->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $id = trim((string) ($row['device_id'] ?? ''));
+                if ($id === '' || isset($byId[$id])) continue;
+                $name = trim((string) ($row['name'] ?? ''));
+                $byId[$id] = [
+                    'id' => $id,
+                    'name' => $name !== '' ? $name : 'Phone',
+                    'phone' => $keptPhones[$id] ?? null,
+                    'status' => 'disconnected',
+                ];
+            }
+        } catch (\Throwable) {
+            // Table may not exist yet on a fresh install.
+        }
+
+        // Ready phones with no stored number: ask the phone service once (QR/status payload often has it).
+        foreach ($byId as $id => $item) {
+            if (($item['phone'] ?? null) !== null) continue;
+            if (!in_array($item['status'], ['ready', 'connected'], true)) continue;
+            try {
+                $detail = $this->pictureFor($id);
+                $phone = trim((string) ($detail['phone'] ?? ''));
+                if ($phone !== '') {
+                    $byId[$id]['phone'] = $phone;
+                    $this->db->prepare('UPDATE whatsapp_devices SET phone = ? WHERE device_id = ?')->execute([$phone, $id]);
+                }
+            } catch (RuntimeException) {
+                // Leave blank when the phone service does not answer.
+            }
+        }
+
+        $devices = [];
+        foreach ($byId as $item) {
+            $active = in_array($item['status'], ['ready', 'connected'], true);
+            $devices[] = [
+                'id' => $item['id'],
+                'name' => $item['name'],
+                'phone' => $item['phone'],
+                'active' => $active,
+                'status' => $active ? 'active' : 'inactive',
+            ];
+        }
+        usort($devices, static function (array $a, array $b): int {
+            if ($a['active'] !== $b['active']) return $a['active'] ? -1 : 1;
+            return strcasecmp((string) $a['name'], (string) $b['name']);
+        });
+        return ['devices' => $devices];
     }
 
     public function addDevice(string $name = ''): array
@@ -125,11 +240,13 @@ class DeviceLink
         return $this->pictureFor($id);
     }
 
-    public function pictureFor(string $id): array
+    public function pictureFor(string $id, bool $forPair = false): array
     {
         if (!preg_match('/^[A-Za-z0-9-]{8,80}$/', $id)) {
             throw new RuntimeException('Choose a phone before scanning.');
         }
+        // Pair clears the desk hold so the same device_id can become Ready again.
+        if ($forPair) WhatsAppTables::releaseHold($this->db, $id);
         $data = $this->call('GET', '/api/devices/' . rawurlencode($id) . '/qr');
         $row = $this->deviceRow($id) ?? [];
         $shaped = $data === null ? $this->rowShape($row) : $this->shape($data, $row);
@@ -140,11 +257,18 @@ class DeviceLink
         return $shaped;
     }
 
+    /**
+     * Stop using this phone for sends, but keep the Message API slot (same device_id)
+     * so Pair can reconnect it. Does not DELETE the device.
+     */
     public function disconnect(?string $id = null): array
     {
         $id = $id !== null && $id !== '' ? $id : (string) ($this->currentId() ?? '');
         if ($id !== '' && preg_match('/^[A-Za-z0-9-]{8,80}$/', $id)) {
-            $this->call('DELETE', '/api/devices/' . rawurlencode($id));
+            // Sync the live roster first so the local row exists, then hold it.
+            $this->devices = null;
+            $this->roster();
+            WhatsAppTables::holdDevice($this->db, $id);
         }
         $this->devices = null;
         return $this->roster();
@@ -197,17 +321,30 @@ class DeviceLink
     {
         $status = strtolower((string) ($row['status'] ?? ''));
         $ready = $status === 'connected' || !empty($row['connected']);
-        $digits = preg_replace('/\D+/', '', (string) ($row['phone_number'] ?? $row['phone'] ?? '')) ?? '';
-        $phone = strlen($digits) >= 8 && strlen($digits) <= 15 ? '+' . $digits : null;
         $name = trim((string) ($row['device_name'] ?? ''));
         return [
             'id' => (string) ($row['device_uuid'] ?? ''),
             'name' => $name !== '' ? $name : 'Phone',
-            'phone' => $phone,
+            'phone' => $this->extractPhone($row),
             'status' => $status === 'blocked' ? 'blocked' : ($ready ? 'ready' : 'disconnected'),
             'seen_at' => $this->moment($row, 'last_seen_at'),
             'linked_at' => $this->moment($row, 'created_at'),
         ];
+    }
+
+    /** Pull a WhatsApp number from the common Message API field names (including jid). */
+    private function extractPhone(array $row): ?string
+    {
+        foreach (['phone_number', 'phone', 'msisdn', 'mobile', 'number', 'jid', 'wid', 'user'] as $key) {
+            $raw = $row[$key] ?? null;
+            if (!is_string($raw) && !is_numeric($raw)) continue;
+            $text = trim((string) $raw);
+            if ($text === '') continue;
+            if (str_contains($text, '@')) $text = explode('@', $text, 2)[0];
+            $digits = preg_replace('/\D+/', '', $text) ?? '';
+            if (strlen($digits) >= 8 && strlen($digits) <= 15) return '+' . $digits;
+        }
+        return null;
     }
 
     private function blank(?string $name = null): array
@@ -225,13 +362,11 @@ class DeviceLink
     private function shape(array $data, ?array $row = null): array
     {
         $connected = !empty($data['connected']) || ($data['status'] ?? '') === 'connected';
-        $digits = preg_replace('/\D+/', '', (string) ($data['phone_number'] ?? $data['phone'] ?? '')) ?? '';
-        $phone = strlen($digits) >= 8 && strlen($digits) <= 15 ? '+' . $digits : null;
         $name = trim((string) ($data['device_name'] ?? $this->account()['name'] ?? ''));
         $row ??= [];
         return [
             'status' => $connected ? 'connected' : 'disconnected',
-            'phone' => $phone,
+            'phone' => $this->extractPhone($data) ?? $this->extractPhone($row),
             'qr' => $this->pictureData((string) ($data['qr'] ?? ''), $connected),
             'name' => $name !== '' ? $name : null,
             'seen_at' => $this->moment($row, 'last_seen_at'),

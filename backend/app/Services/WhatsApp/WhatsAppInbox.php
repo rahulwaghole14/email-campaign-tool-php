@@ -30,6 +30,8 @@ final class WhatsAppInbox
                 'last_message' => (string) ($row['last_message'] ?? ''),
                 'last_at' => $this->moment((string) ($row['last_message_time'] ?? '')),
                 'unread_count' => (int) ($row['unread_count'] ?? 0),
+                'device_id' => trim((string) ($row['device_uuid'] ?? '')),
+                'device_name' => trim((string) ($row['device_name'] ?? '')),
             ];
         }
         return ['chats' => $chats];
@@ -52,12 +54,16 @@ final class WhatsAppInbox
             $inbound = ($row['direction'] ?? '') === 'inbound';
             $phone = $this->phone((string) ($row['sender_phone'] ?? ''), $remoteJid) ?: $phone;
             if ($inbound && trim((string) ($row['sender_name'] ?? '')) !== '') $name = trim((string) $row['sender_name']);
+            $devUuid = trim((string) ($row['device_uuid'] ?? ''));
+            $devName = trim((string) ($row['device_name'] ?? ''));
             $messages[] = [
                 'id' => (int) ($row['id'] ?? 0),
                 'direction' => $inbound ? 'in' : 'out',
                 'body' => (string) ($row['message'] ?? ''),
                 'status' => strtolower((string) ($row['status'] ?? '')),
                 'created_at' => $this->moment((string) ($row['created_at'] ?? '')),
+                'device_id' => $devUuid !== '' ? $devUuid : null,
+                'device_name' => $devName !== '' ? $devName : null,
             ];
         }
         return [

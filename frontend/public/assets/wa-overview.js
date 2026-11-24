@@ -24,20 +24,23 @@
 
   function timeAgo(dateStr) {
     if (!dateStr) return '';
-    const now = Date.now();
-    const past = new Date(dateStr).getTime();
-    if (isNaN(past)) return dateStr;
-    const diffSec = Math.floor((now - past) / 1000);
-    if (diffSec < 60) return 'Just now';
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return diffMin + 'm ago';
-    const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return diffHours + 'h ago';
-    const diffDays = Math.floor(diffHours / 24);
+    const past = new Date(dateStr);
+    if (Number.isNaN(past.getTime())) return dateStr;
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startPast = new Date(past.getFullYear(), past.getMonth(), past.getDate());
+    const diffDays = Math.round((startToday - startPast) / 86400000);
+    if (diffDays <= 0) {
+      const diffSec = Math.floor((now.getTime() - past.getTime()) / 1000);
+      if (diffSec < 60) return 'Just now';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return diffMin + 'm ago';
+      const diffHours = Math.floor(diffMin / 60);
+      return diffHours + 'h ago';
+    }
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return diffDays + 'd ago';
-    const d = new Date(past);
-    return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    return past.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
   }
 
   function avatarText(phone) {
@@ -85,16 +88,23 @@
     }).join('');
 
     const perDevice = today.limit_per_device ?? 20;
-    const hint = data.device
-      ? `· ${perDevice} msg/day limit`
-      : `· ${perDevice} msg/day limit per device`;
+    const readyCount = devices.filter(dev => dev.status === 'ready' || dev.status === 'connected').length;
+    let hint;
+    if (data.device) {
+      hint = total > 0 ? `· ${perDevice} msg/day limit` : '· phone not ready';
+    } else if (readyCount === 0) {
+      hint = '· no ready phones — standby devices do not add quota';
+    } else {
+      hint = `· ${perDevice} msg/day × ${readyCount} ready phone${readyCount === 1 ? '' : 's'}`;
+    }
+    const badge = total > 0 ? `${used} / ${total} messages used` : `${used} used · 0 ready capacity`;
 
     return `
       <div class="wa-ov-quota-strip">
         <div class="wa-ov-quota-summary">
-          <span class="status-dot"></span>
+          <span class="status-dot${readyCount || data.device && total > 0 ? '' : ' is-standby'}"></span>
           <span class="wa-ov-quota-title">Today's Dispatch Quota:</span>
-          <span class="wa-ov-quota-badge">${used} / ${total} messages used</span>
+          <span class="wa-ov-quota-badge">${escapeHtml(badge)}</span>
           <span class="wa-ov-quota-hint">${escapeHtml(hint)}</span>
         </div>
         <div class="wa-ov-quota-chips">

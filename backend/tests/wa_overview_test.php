@@ -44,4 +44,12 @@ assert($snapDev['today_quota']['used'] === 2, 'Dev 1 today used should be 2');
 assert($snapDev['today_quota']['total'] === 50, 'Dev 1 today total should be sheet limit 50');
 assert($snapDev['device_name'] === 'WAC 1', 'Device name should be WAC 1');
 
+// Standby phones must not inflate today's capacity.
+$db->exec("UPDATE whatsapp_devices SET status = 'disconnected'");
+$snapDown = $service->snapshot('7');
+assert($snapDown['today_quota']['total'] === 0, 'Standby devices add 0 capacity');
+assert($snapDown['device_quotas'][0]['limit'] === 0, 'Standby device limit is 0');
+$snapDownDev = $service->snapshot('7', 'dev-uuid-001');
+assert($snapDownDev['today_quota']['total'] === 0, 'Selected standby device capacity is 0');
+
 echo "All WhatsApp Overview Service snapshot checks passed!\n";

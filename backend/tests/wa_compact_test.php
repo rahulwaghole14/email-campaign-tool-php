@@ -30,8 +30,18 @@ $queue = new WhatsAppQueue($db, $link);
 $insert = $db->prepare("INSERT INTO whatsapp_sends (phone, name, message, status, error, account_name, device_id, due_at, source_id, record_id, created_at, attempts) VALUES (?, 'N', 'Hi', ?, NULL, 'Phone', ?, ?, 1, ?, ?, ?)");
 $iso = static fn (int $at): string => gmdate('c', $at);
 $now = time();
-$add = function (string $status, string $device, int $due, string $record, string $created = '', int $attempts = 0) use ($insert, $db, $iso, $now): int {
-    $insert->execute(['+6698' . $record, $status, $device, $iso($due), $record, $created !== '' ? $created : $iso($now), $attempts]);
+// Distinct digit phones so sticky-owner matching does not treat every test row as the same number.
+$phones = [
+    'P1-SENT' => '+66981110001',
+    'P1-A' => '+66981110002',
+    'P1-HELD' => '+66981110003',
+    'P1-B' => '+66981110004',
+    'P1-C' => '+66981110005',
+    'P2-RETRY' => '+66982220001',
+    'P2-D' => '+66982220002',
+];
+$add = function (string $status, string $device, int $due, string $record, string $created = '', int $attempts = 0) use ($insert, $db, $iso, $now, $phones): int {
+    $insert->execute([$phones[$record], $status, $device, $iso($due), $record, $created !== '' ? $created : $iso($now), $attempts]);
     return (int) $db->lastInsertId();
 };
 $due = static fn (int $id): int => strtotime((string) $db->query("SELECT due_at FROM whatsapp_sends WHERE id = $id")->fetchColumn());

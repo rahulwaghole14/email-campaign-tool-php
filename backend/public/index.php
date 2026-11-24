@@ -15,6 +15,8 @@ use App\Services\Sheets\SheetService;
 use App\Services\MailAccountService;
 use App\Services\DashboardService;
 use App\Services\UserService;
+use App\Services\WhatsApp\DeviceLink;
+use App\Services\WhatsApp\WhatsAppQueue;
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $root = dirname(__DIR__, 2) . '/frontend';
@@ -300,6 +302,47 @@ if ($path === '/api/reset-password' && $method === 'POST') {
         respond(['error' => 'Failed to reset administrator password.'], 500);
     }
 }
+// One-shot / scheduled: cancel waiting rows left behind after a sheet was deleted.
+if ($path === '/api/cron/whatsapp-orphan-cleanup' && $method === 'GET') {
+    $secret = (string) (getenv('CRON_SECRET') ?: '');
+    $token = (string) ($_GET['token'] ?? '');
+    if ($secret === '' || $token === '' || !hash_equals($secret, $token)) {
+        respond(['error' => 'Forbidden.'], 403);
+    }
+    try {
+        $db = Database::connect();
+        Database::migrate($db);
+        $sources = (int) $db->query('SELECT COUNT(*) FROM whatsapp_sheet_sources')->fetchColumn();
+        $waiting = (int) $db->query("SELECT COUNT(*) FROM whatsapp_sends WHERE status IN ('waiting', 'sending')")->fetchColumn();
+        $orphanBefore = (int) $db->query(
+            "SELECT COUNT(*) FROM whatsapp_sends s
+             LEFT JOIN whatsapp_sheet_sources src ON src.id = s.source_id
+             WHERE s.source_id IS NOT NULL AND src.id IS NULL AND s.status IN ('waiting', 'sending')"
+        )->fetchColumn();
+        $cancelled = (new WhatsAppQueue($db, new DeviceLink($db)))->cancelOrphaned();
+        $orphanAfter = (int) $db->query(
+            "SELECT COUNT(*) FROM whatsapp_sends s
+             LEFT JOIN whatsapp_sheet_sources src ON src.id = s.source_id
+             WHERE s.source_id IS NOT NULL AND src.id IS NULL AND s.status IN ('waiting', 'sending')"
+        )->fetchColumn();
+        $byStatus = $db->query(
+            "SELECT status, COUNT(*) AS c FROM whatsapp_sends WHERE source_id IS NOT NULL GROUP BY status"
+        )->fetchAll(PDO::FETCH_KEY_PAIR);
+        respond([
+            'ok' => true,
+            'sources' => $sources,
+            'waiting_or_sending' => $waiting,
+            'orphans_before' => $orphanBefore,
+            'cancelled' => $cancelled,
+            'orphans_after' => $orphanAfter,
+            'by_status' => $byStatus,
+            'checked_at' => gmdate('c'),
+        ]);
+    } catch (Throwable $e) {
+        error_log('WhatsApp orphan cleanup failed: ' . $e->getMessage());
+        respond(['error' => 'Cleanup failed.'], 500);
+    }
+}
 // Hostinger can call this on a schedule without a desk login (token required).
 if ($path === '/api/cron/inbox-sync' && $method === 'GET') {
     $secret = (string) (getenv('CRON_SECRET') ?: '');
@@ -397,6 +440,9 @@ try {
         } else {
             respond($imap->sync(50));
         }
+    }
+    if ($path === '/api/inbox/purge-linkedin' && $method === 'POST') {
+        respond($imap->purgeLinkedInEmails());
     }
     if (preg_match('#^/api/inbox/(\d+)$#', $path, $match) && $method === 'GET') {
         $detail = $imap->detail((int) $match[1]);

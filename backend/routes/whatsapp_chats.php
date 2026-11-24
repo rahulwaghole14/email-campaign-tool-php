@@ -89,17 +89,38 @@ function waChatDevice(array $query): array
 function waLimitThread(App\Services\WhatsApp\WhatsAppChatService $chats, array $thread, array $choice): array
 {
     $phone = (string) ($thread['chat']['phone'] ?? '');
-    $since = strtotime($chats->firstSent($phone, $choice['id'], $choice['name']));
-    if ($choice['id'] !== '' && !$since) {
+    $targetDeviceId = $choice['id'] !== '' ? $choice['id'] : trim((string) ($thread['chat']['device_id'] ?? ''));
+    if ($targetDeviceId === '' && !empty($thread['chat']['senders'][0]['id'])) {
+        $targetDeviceId = trim((string) $thread['chat']['senders'][0]['id']);
+    }
+    $targetDeviceName = $choice['name'] !== '' ? $choice['name'] : trim((string) ($thread['chat']['senders'][0]['name'] ?? ''));
+
+    $since = strtotime($chats->firstSent($phone, $targetDeviceId, $targetDeviceName));
+    if ($targetDeviceId !== '' && !$since) {
+        $since = strtotime($chats->firstSent($phone));
+    }
+    if ($targetDeviceId !== '' && !$since && !empty($choice['id'])) {
         $thread['messages'] = [];
         return $thread;
     }
-    if ($since) {
-        $thread['messages'] = array_values(array_filter(
-            $thread['messages'] ?? [],
-            static fn (array $message): bool => strtotime((string) ($message['created_at'] ?? '')) >= $since - 2
+
+    $messages = $thread['messages'] ?? [];
+    if ($targetDeviceId !== '' || $since) {
+        $messages = array_values(array_filter(
+            $messages,
+            static function (array $message) use ($since, $targetDeviceId): bool {
+                $msgDevId = trim((string) ($message['device_id'] ?? ''));
+                if ($targetDeviceId !== '' && $msgDevId !== '' && $msgDevId !== $targetDeviceId) {
+                    return false;
+                }
+                if ($since) {
+                    return strtotime((string) ($message['created_at'] ?? '')) >= $since - 2;
+                }
+                return true;
+            }
         ));
     }
+    $thread['messages'] = $messages;
     if ($choice['name'] !== '') $thread['chat']['sender'] = $choice['name'];
     return $thread;
 }

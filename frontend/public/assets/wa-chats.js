@@ -12,6 +12,9 @@
   let loadSeq = 0;
   // Chats the user just opened. Keeps unread at 0 across the 8s reload until a newer message arrives.
   const readState = new Map();
+  // Instant in-memory thread cache for 0ms chat opening
+  const threadCache = new Map();
+  try { sessionStorage.removeItem('wa_chat_selected_phone'); } catch (e) {}
 
   const AVATAR_PALETTES = [
     { bg: '#e7f6ec', color: '#166534', border: '#bbf7d0' },
@@ -113,10 +116,12 @@
 
   function phoneChoice() {
     const select = document.getElementById('wa-chat-phone');
-    const option = select?.selectedOptions?.[0];
+    const id = select?.value || '';
+    const cached = id ? cachedDevices.find((device) => String(device.id) === String(id)) : null;
     return {
-      id: select?.value || '',
-      name: select?.value ? (option?.textContent || '') : '',
+      id,
+      // Prefer the real device name for API/name fallbacks — not the "· Active" label.
+      name: cached?.name || '',
     };
   }
 
@@ -145,7 +150,7 @@
       const dev = cachedDevices.find(d => String(d.id) === String(devId));
       if (dev) return dev;
     }
-    const readyDev = cachedDevices.find(d => d.status === 'ready' || d.status === 'connected');
+    const readyDev = cachedDevices.find(d => d.active || d.status === 'ready' || d.status === 'connected' || d.status === 'active');
     if (readyDev) return readyDev;
     if (cachedDevices[0]) return cachedDevices[0];
     return { name: 'Whatsapp Campaign', phone: '' };
@@ -271,6 +276,8 @@
   function renderThread(data) {
     const pane = document.getElementById('wa-chat-thread');
     if (!pane) return;
+    const prevInput = pane.querySelector('.wa-chat-compose input');
+    const prevDraft = (prevInput && prevInput.value) ? prevInput.value : '';
     const chat = data.chat || {};
     const title = displayName(chat);
     const dev = deviceForChat(chat);
@@ -304,7 +311,6 @@
           <div class="wa-chat-head-info">
             <div style="display:flex; align-items:center; gap:6px;">
               <strong>${escapeHtml(title)}</strong>
-              <span class="wa-chat-status-active">Active</span>
             </div>
             <p class="wa-chat-head-sub">
               <span class="status-dot"></span>
@@ -337,6 +343,9 @@
     });
     const form = pane.querySelector('.wa-chat-compose');
     const input = form?.message;
+    if (prevDraft && input) {
+      input.value = prevDraft;
+    }
     const pop = form?.querySelector('.wa-emoji-pop');
     const emojis = ['😀','😁','😂','😊','😍','🙏','👍','👋','🔥','✅','❤️','🎉'];
     if (pop) {
@@ -373,7 +382,11 @@
       const send = chat.remote_jid
         ? api('whatsapp/inbox/send', { method: 'POST', body: JSON.stringify({ remote_jid: chat.remote_jid, phone: chat.phone, message }) })
         : api('whatsapp/send', { method: 'POST', body: JSON.stringify({ phone: chat.phone, message }) });
-      send.then(() => openThread(chat.id))
+      send.then(() => {
+        threadCache.delete(String(chat.id));
+        if (chat.remote_jid) threadCache.delete(String(chat.remote_jid));
+        openThread(chat.id);
+      })
         .catch(error => notice(error.message, true))
         .finally(() => { sending = false; });
     });
@@ -388,6 +401,8 @@
         method: 'POST',
         body: JSON.stringify({ phone: chat.phone, direction: message.direction, body: message.body, created_at: message.created_at })
       });
+      threadCache.delete(String(chat.id));
+      if (chat.remote_jid) threadCache.delete(String(chat.remote_jid));
       await openThread(chat.id);
     } catch (error) {
       notice(error.message, true);
@@ -425,6 +440,7 @@
   }
 
   async function openThread(id) {
+    const prevId = openId;
     openId = id;
     const before = allChats.find((chat) => chat.id === id) || chats.find((chat) => chat.id === id);
     if (before) {
@@ -433,24 +449,48 @@
       before.unread_count = 0;
     }
     renderList();
+
+    const key = String(id);
+    // Instant local rendering (0ms): display cached messages immediately if available
+    if (threadCache.has(key)) {
+      renderThread(threadCache.get(key));
+    } else if (before && prevId !== id) {
+      // Instant header & last known message preview so clicking feels instant
+      renderThread({
+        chat: { ...before },
+        messages: before.last_message ? [{
+          id: 0,
+          direction: 'out',
+          body: before.last_message,
+          status: 'sent',
+          created_at: before.last_at || new Date().toISOString()
+        }] : []
+      });
+    }
+
     const path = threadPath(id);
-    const data = await api(path);
-    if (openId !== id) return;
-    const opened = allChats.find((chat) => chat.id === id) || chats.find((chat) => chat.id === id);
-    if (opened) {
-      readState.set(String(id), { at: Math.max(activityAt(opened), readState.get(String(id))?.at || 0) });
-      opened.unread_count = 0;
-    }
-    if (data && data.chat && opened) {
-      if ((!data.chat.senders || !data.chat.senders.length) && opened.senders && opened.senders.length) {
-        data.chat.senders = opened.senders;
+    try {
+      const data = await api(path);
+      if (openId !== id) return;
+      const opened = allChats.find((chat) => chat.id === id) || chats.find((chat) => chat.id === id);
+      if (opened) {
+        readState.set(String(id), { at: Math.max(activityAt(opened), readState.get(String(id))?.at || 0) });
+        opened.unread_count = 0;
       }
-      if (!data.chat.device_id && opened.device_id) {
-        data.chat.device_id = opened.device_id;
+      if (data && data.chat && opened) {
+        if ((!data.chat.senders || !data.chat.senders.length) && opened.senders && opened.senders.length) {
+          data.chat.senders = opened.senders;
+        }
+        if (!data.chat.device_id && opened.device_id) {
+          data.chat.device_id = opened.device_id;
+        }
       }
+      threadCache.set(key, data);
+      renderList();
+      renderThread(data);
+    } catch (err) {
+      if (!threadCache.has(key)) renderEmptyThread();
     }
-    renderList();
-    renderThread(data);
   }
 
   let phonesReady = false;
@@ -475,31 +515,49 @@
     return true;
   }
 
+  function deviceFilterLabel(device) {
+    const name = String(device.name || 'Phone').trim() || 'Phone';
+    const phone = device.phone ? formatPhone(device.phone) : '';
+    const state = device.active ? 'Active' : 'Inactive';
+    return phone ? `${name} · ${phone} · ${state}` : `${name} · ${state}`;
+  }
+
   async function fillPhones() {
-    if (phonesReady) {
-      if (pendingSender && applySender(pendingSender)) pendingSender = null;
-      return;
-    }
     const select = document.getElementById('wa-chat-phone');
     if (!select) return;
     const current = select.value;
-    const data = await api('whatsapp/device');
+    // Live slots, blocked, and history senders (deleted slots still filterable).
+    const data = await api('whatsapp/device/filters');
     cachedDevices = data.devices || [];
-    select.replaceChildren();
-    const all = document.createElement('option');
-    all.value = '';
+
     const totalCount = (data.devices || []).length;
-    all.textContent = totalCount ? `All linked devices (${totalCount})` : 'All linked devices';
-    select.append(all);
-    (data.devices || []).forEach((device) => {
-      const option = document.createElement('option');
-      option.value = device.id || '';
-      const phoneSuffix = device.phone ? ` (${formatPhone(device.phone)})` : '';
-      option.textContent = (device.name || 'Phone') + phoneSuffix;
-      select.append(option);
-    });
-    if (pendingSender && applySender(pendingSender)) pendingSender = null;
-    else select.value = [...select.options].some((option) => option.value === current) ? current : '';
+    const allText = totalCount ? `All devices (${totalCount})` : 'All devices';
+    const existingIds = [...select.options].slice(1).map((opt) => opt.value).join(',');
+    const newIds = (data.devices || []).map((d) => d.id || '').join(',');
+
+    // Only rebuild DOM options if device list actually changed, avoiding UI flicker and dropdown resets
+    if (existingIds !== newIds || !select.options.length) {
+      select.replaceChildren();
+      const all = document.createElement('option');
+      all.value = '';
+      all.textContent = allText;
+      select.append(all);
+      (data.devices || []).forEach((device) => {
+        const option = document.createElement('option');
+        option.value = device.id || '';
+        option.dataset.name = device.name || 'Phone';
+        option.textContent = deviceFilterLabel(device);
+        select.append(option);
+      });
+      const match = [...select.options].some((option) => option.value === current);
+      select.value = match ? current : '';
+    } else if (select.options[0]) {
+      select.options[0].textContent = allText;
+    }
+
+    if (pendingSender && applySender(pendingSender)) {
+      pendingSender = null;
+    }
     phonesReady = true;
   }
 
@@ -548,6 +606,7 @@
   window.loadWaChats = () => { loadWaChats().catch(() => renderEmptyThread()); };
   window.openWaChatByPhone = (phone, sender) => {
     const raw = String(phone || '').trim();
+    if (!raw) return;
     pendingPhone = raw;
     missPhone = raw;
     lockEmpty = true;
@@ -556,14 +615,48 @@
     const select = document.getElementById('wa-chat-phone');
     if (pendingSender && applySender(pendingSender)) {
       pendingSender = null;
-    } else if (select) {
-      // Prefer All devices while resolving so a stale filter cannot hide/swap the target.
-      select.value = '';
     }
+
     const search = document.getElementById('wa-chat-search');
     if (search) search.value = '';
     listFilter = 'all';
     document.querySelectorAll('.wa-filter[data-filter]').forEach((item) => item.classList.toggle('is-on', item.dataset.filter === 'all'));
+
+    const match = findChatByPhone(raw);
+    if (match) {
+      openId = match.id;
+      pendingPhone = '';
+      lockEmpty = false;
+      missPhone = '';
+      renderList();
+      openThread(match.id);
+    } else {
+      // Immediately render target preview — never leave the previously opened chat visible on screen
+      const pane = document.getElementById('wa-chat-thread');
+      if (pane) {
+        const pal = avatarPalette(raw);
+        const avatarInit = avatarInitials(raw);
+        const devName = sender?.name || 'Phone';
+        pane.innerHTML = `
+          <div class="wa-chat-head">
+            <div class="wa-chat-head-left">
+              <span class="wa-chat-avatar" style="background:${pal.bg}; color:${pal.color}; border:1px solid ${pal.border}; font-weight:700;">${escapeHtml(avatarInit)}</span>
+              <div class="wa-chat-head-info">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <strong>${escapeHtml(formatPhone(raw))}</strong>
+                </div>
+                <p class="wa-chat-head-sub">
+                  <span class="status-dot"></span>
+                  <span>Linked via <strong>${escapeHtml(devName)}</strong></span>
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="wa-chat-stream"><p class="muted" style="padding:32px 0; text-align:center;">Loading conversation…</p></div>
+        `;
+      }
+      renderList();
+    }
     window.view?.('wa-chats');
   };
   setInterval(() => {

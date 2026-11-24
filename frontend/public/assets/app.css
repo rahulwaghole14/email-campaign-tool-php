@@ -1847,7 +1847,7 @@ header #logout:hover {
 }
 
 #sheet-preview table thead th {
-  padding: 10px 14px !important;
+  padding: 10px 10px !important;
   font-size: 11px !important;
   font-weight: 600 !important;
   letter-spacing: 0.5px !important;
@@ -1869,7 +1869,7 @@ header #logout:hover {
 }
 
 #sheet-preview table tbody td {
-  padding: 8px 14px !important;
+  padding: 8px 8px !important;
   vertical-align: middle !important;
   font-size: 13px !important;
   color: #202124 !important;
@@ -4949,12 +4949,17 @@ p.login-desc {
 }
 
 /* Polished Sheet Column Mapping UI */
+#sheet-map-form.sheet-mapping,
 .sheet-mapping {
-  margin-top: 24px !important;
-  padding: 28px !important;
+  margin-top: 20px !important;
+  padding: 22px 24px !important;
   border-radius: 14px !important;
   border: 1px solid #dce4de !important;
   box-shadow: 0 4px 18px rgba(0,0,0,0.04) !important;
+  height: auto !important;
+  min-height: 0 !important;
+  align-self: flex-start !important;
+  width: 100% !important;
 }
 
 .mapping-card-header h2 {
@@ -4967,12 +4972,18 @@ p.login-desc {
 .mapping-inputs-group {
   display: grid !important;
   grid-template-columns: 1fr 1fr !important;
-  gap: 20px !important;
-  margin-top: 20px !important;
+  gap: 12px 20px !important;
+  margin-top: 16px !important;
   background: #f8faf8 !important;
-  padding: 18px 20px !important;
+  padding: 16px 18px !important;
   border-radius: 12px !important;
   border: 1px solid #e2ebe4 !important;
+  align-items: start !important;
+}
+
+.mapping-inputs-footnote {
+  grid-column: 1 / -1 !important;
+  margin: 2px 0 0 !important;
 }
 
 @media(max-width: 650px) {
@@ -5003,16 +5014,49 @@ p.login-desc {
 
 .mapping-input-col .field-hint {
   display: block !important;
-  font-size: 11.5px !important;
-  color: #6a7b70 !important;
-  margin-top: 6px !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  color: #5a6d62 !important;
+  margin-top: 7px !important;
+}
+
+.mapping-input-col .field-hint strong {
+  color: #2f4a3b !important;
+  font-weight: 650 !important;
+}
+
+.mapping-input-col .field-hint-example {
+  margin-top: 4px !important;
+  color: #6f8076 !important;
+}
+
+.mapping-input-col .field-hint-example code {
+  font-size: 11px !important;
+  background: #eef3ef !important;
+  border: 1px solid #d7e2da !important;
+  border-radius: 5px !important;
+  padding: 2px 6px !important;
+  color: #2f4a3b !important;
+}
+
+.mapping-input-col--header input {
+  width: 88px !important;
+  max-width: 100% !important;
 }
 
 .mapping-read-row {
-  margin-top: 16px !important;
+  margin-top: 14px !important;
+  margin-bottom: 0 !important;
   display: flex !important;
   align-items: center !important;
-  gap: 12px !important;
+  flex-wrap: wrap !important;
+  gap: 10px 12px !important;
+}
+
+.mapping-next-hint {
+  font-size: 12px !important;
+  color: #6a7b70 !important;
+  line-height: 1.4 !important;
 }
 
 .mapping-read-btn {
@@ -5096,6 +5140,31 @@ p.login-desc {
   gap: 24px !important;
 }
 
+/* Before detect: collapse every post-action block so the card hugs the buttons */
+#sheet-map-form.is-awaiting-detect #detected-columns-preview,
+#sheet-map-form.is-awaiting-detect #sheet-mappings,
+#sheet-map-form.is-awaiting-detect #mapping-actions,
+#sheet-mappings[hidden],
+#detected-columns-preview[hidden],
+#mapping-actions[hidden] {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  min-height: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+#sheet-map-form.is-awaiting-detect {
+  padding-bottom: 18px !important;
+}
+
+/* While mapping a new upload, keep focus on Step 2 */
+#sheets-directory:has(#sheet-map-form:not([hidden])) .sheet-list {
+  display: none !important;
+}
+
 .mapping-section {
   background: #fafbf9 !important;
   border: 1px solid #e5ebe6 !important;
@@ -5138,6 +5207,22 @@ p.login-desc {
   display: grid !important;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
   gap: 14px !important;
+}
+
+.mapping-section-grid--wa {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 1100px) {
+  .mapping-section-grid--wa {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 650px) {
+  .mapping-section-grid--wa {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 .mapping-field-card {
@@ -5198,13 +5283,29 @@ p.login-desc {
 }
 
 .mapping-footer-bar {
-  margin-top: 24px !important;
-  display: flex !important;
+  margin-top: 18px !important;
   justify-content: flex-end !important;
   align-items: center !important;
   gap: 14px !important;
-  padding-top: 18px !important;
+  padding-top: 14px !important;
   border-top: 1px solid #e5ebe6 !important;
+}
+
+/* Must beat [hidden] vs .mapping-footer-bar { display:flex !important } clash */
+#mapping-actions:not([hidden]) {
+  display: flex !important;
+}
+
+#mapping-actions[hidden] {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+/* When Step 2 is open, tuck away the upload cards so the mapping card can stay compact */
+#sheets-directory:has(#sheet-map-form:not([hidden])) .sheets-grid {
+  display: none !important;
 }
 
 /* Custom In-App Send Confirmation Modal */

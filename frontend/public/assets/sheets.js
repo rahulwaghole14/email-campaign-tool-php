@@ -12,7 +12,8 @@
   const fields = {id:'Record ID',name:'Agency / recipient name',email:'Email',subject:'Email subject',body:'Email content',link:'Drive link',cc:'CC',bcc:'BCC',enabled:'Send Enabled',followup1_subject:'Follow-up 1 subject',followup1_body:'Follow-up 1 message',followup2_subject:'Follow-up 2 subject',followup2_body:'Follow-up 2 message'};
   const aliases = {id:['id','record_id'], name:['agency name','recipient_name'],email:['email','recipient_email'],subject:['email subject','subject'],body:['email content','message'],link:['drive_link','drive link'],cc:['cc'],bcc:['bcc'],enabled:['send enabled','send_enabled'],followup1_subject:['follow-up subject 1','follow-up email 1','followup email 1'],followup1_body:['follow-up content 1','follow-up message 1','follow-up email content 1'],followup2_subject:['follow-up subject 2','follow-up email 2','followup email 2'],followup2_body:['follow-up content 2','follow-up message 2','follow-up email content 2']};
   const waFields = {id:'Record ID',name:'Agency name',phone:'Phone number',message:'WhatsApp content'};
-  const waAliases = {id:['id','record id','record_id'],name:['agency name','name'],phone:['phone','phone number','mobile','whatsapp number'],message:['whatsapp content','whatsapp message']};
+  // Message aliases: WhatsApp-specific names first, then plain "Message" (shared email+WA sheets).
+  const waAliases = {id:['id','record id','record_id'],name:['agency name','name'],phone:['phone','phone number','mobile','whatsapp number'],message:['whatsapp content','whatsapp message','message','content']};
   const sheetMode = () => document.body.dataset.channel === 'whatsapp' ? 'whatsapp' : 'email';
   const activeFields = () => sheetMode() === 'whatsapp' ? waFields : fields;
   const activeAliases = () => sheetMode() === 'whatsapp' ? waAliases : aliases;
@@ -39,7 +40,33 @@
   const post = (path, data = {}) => api(path, {method:'POST',body:JSON.stringify(data)});
   const element = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
   const canAddress = row => !row.issues?.length && (!('enabled' in row.values) || String(row.values.enabled || '').trim().toUpperCase() === 'YES');
-  const isNotSent = row => canAddress(row) && (row.send_status === 'not_queued' || !row.send_status);
+
+  // WhatsApp Skip persistence in sessionStorage
+  const getWaSkippedKey = sourceId => 'rsl_wa_skipped_' + String(sourceId || '');
+  const loadWaSkipped = sourceId => {
+    try {
+      const raw = sessionStorage.getItem(getWaSkippedKey(sourceId));
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set();
+    }
+  };
+  const saveWaSkipped = (sourceId, set) => {
+    try {
+      sessionStorage.setItem(getWaSkippedKey(sourceId), JSON.stringify(Array.from(set)));
+    } catch {}
+  };
+  let waSkippedIds = new Set();
+  const isRowSkipped = recordId => waSkippedIds.has(String(recordId));
+
+  // WhatsApp: Ready includes never-queued rows and follow-ups whose mapped message differs from the last send, excluding user-skipped rows.
+  const isWaQueueable = row => canAddress(row) && (
+    row.can_queue === true
+    || (row.can_queue == null && (row.send_status === 'not_queued' || !row.send_status))
+  );
+  const isNotSent = row => sheetMode() === 'whatsapp'
+    ? (isWaQueueable(row) && !isRowSkipped(row.record_id))
+    : (canAddress(row) && (row.send_status === 'not_queued' || !row.send_status));
   const isPendingRow = row => canAddress(row) && (row.send_status === 'pending' || row.send_status === 'processing');
   const isNoWaError = row => /not registered on whatsapp/i.test(String(row.send_error || row.error || ''));
   const isFailedRow = row => canAddress(row) && row.send_status === 'failed' && !isNoWaError(row);
@@ -167,6 +194,7 @@
     const mid = $('#sheet-col-mid');
     const next = $('#sheet-col-next');
     const extra = $('#sheet-col-extra');
+    const devCol = $('#sheet-col-device');
     if (idHead) idHead.textContent = 'ID';
     if (extra) {
       extra.textContent = 'Agency / Name';
@@ -174,6 +202,7 @@
     }
     if (mid) mid.textContent = wa ? 'Phone' : 'Email';
     if (next) next.textContent = wa ? 'Message' : 'Subject';
+    if (devCol) devCol.hidden = !wa;
     const readyLabel = document.querySelector('#sheet-quick-tabs [data-tab-filter="ready"]');
     if (readyLabel && readyLabel.firstChild) readyLabel.firstChild.nodeValue = wa ? 'Ready ' : 'Not sent ';
   }
@@ -362,10 +391,11 @@
       mappingId = null;
       savedMapping = null;
       $('#sheet-tab').disabled = false;
+      // WhatsApp/CSV sheets almost always start at row 1; some email company templates put titles lower.
       $('#sheet-header').value = (file.name.toLowerCase().endsWith('.csv') || sheetMode() === 'whatsapp') ? 1 : 6;
       displayTabs(data.metadata);
       $('#sheet-map-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      notice('File uploaded! Select tab and header row, then map the columns.');
+      notice('File uploaded. Confirm the title row (usually 1), then Read & Detect Columns.');
     } catch (err) {
       notice(err.message, true);
     } finally {
@@ -379,11 +409,19 @@
   $('#refresh-sources').addEventListener('click', window.loadSheets);
 
   function clearMapping() {
-    $('#sheet-mappings').replaceChildren();
+    const form = $('#sheet-map-form');
+    if (form) form.classList.add('is-awaiting-detect');
+    const mappings = $('#sheet-mappings');
+    if (mappings) {
+      mappings.replaceChildren();
+      mappings.hidden = true;
+    }
     const saveBtn = $('#save-source');
     if (saveBtn) saveBtn.hidden = true;
     const actionsBar = $('#mapping-actions');
     if (actionsBar) actionsBar.hidden = true;
+    const nextHint = $('#mapping-next-hint');
+    if (nextHint) nextHint.hidden = false;
     const previewBanner = $('#detected-columns-preview');
     if (previewBanner) {
       previewBanner.hidden = true;
@@ -403,7 +441,12 @@
     $('#sheet-tab').replaceChildren();
     for (const tab of data.sheets || []) { const option = element('option',tab.properties.title); option.value = tab.properties.sheetId; $('#sheet-tab').append(option); }
     if (selectedTab !== null) $('#sheet-tab').value = selectedTab;
-    $('#sheet-map-form').hidden = false; clearMapping();
+    const mapForm = $('#sheet-map-form');
+    if (mapForm) {
+      mapForm.hidden = false;
+      mapForm.classList.add('is-awaiting-detect');
+    }
+    clearMapping();
     $('#mapping-source-label').textContent = `Map columns for ${data.properties.title} (${uploadId ? 'uploaded copy' : 'Google Sheet'})`;
   }
 
@@ -427,9 +470,9 @@
         <div class="detected-columns-header">
           <div class="detected-columns-summary">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
-            <span><strong>${headers.length} columns detected</strong> from Row ${Number($('#sheet-header').value)}</span>
+            <span><strong>${headers.length} columns detected</strong> from title row ${Number($('#sheet-header').value)}</span>
           </div>
-          <span class="detected-columns-hint">Verify the auto-mapped fields below or adjust any column</span>
+          <span class="detected-columns-hint">Check the mapped fields below, then save</span>
         </div>
         <div class="detected-columns-chips">
           ${headers.map(h => `<span class="col-chip">${escapeHtml(h)}</span>`).join('')}
@@ -464,7 +507,14 @@
         select.append(option);
       }
 
-      const autoValue = savedMapping?.[key] || headers.find(header => (headerAliases[key] || []).includes(header.toLowerCase())) || '';
+      // Prefer alias order (e.g. "WhatsApp content" before plain "Message" on mixed sheets).
+      let autoValue = savedMapping?.[key] || '';
+      if (!autoValue) {
+        for (const alias of (headerAliases[key] || [])) {
+          const hit = headers.find(header => header.toLowerCase() === alias);
+          if (hit) { autoValue = hit; break; }
+        }
+      }
       select.value = autoValue;
       if (mappingId && key === 'id') select.disabled = true;
 
@@ -478,26 +528,42 @@
       return card;
     };
 
-    const reqSection = element('div', undefined, 'mapping-section');
-    reqSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill required">1</span> ${wa ? 'Phone and WhatsApp message' : 'Mandatory Email Fields (Required to dispatch)'}</div><div class="mapping-section-grid"></div>`;
-    const reqGrid = reqSection.querySelector('.mapping-section-grid');
-    requiredKeys.forEach(key => reqGrid.append(createFieldCard(key, labels[key], true)));
+    const sections = [];
+    if (wa) {
+      // One row: required Phone/Message + optional ID/Name (wide screens).
+      const waSection = element('div', undefined, 'mapping-section');
+      waSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill required">1</span> Map columns (Phone &amp; message required)</div><div class="mapping-section-grid mapping-section-grid--wa"></div>`;
+      const waGrid = waSection.querySelector('.mapping-section-grid');
+      requiredKeys.forEach(key => waGrid.append(createFieldCard(key, labels[key], true)));
+      optionalKeys.forEach(key => waGrid.append(createFieldCard(key, labels[key], false)));
+      sections.push(waSection);
+    } else {
+      const reqSection = element('div', undefined, 'mapping-section');
+      reqSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill required">1</span> Mandatory Email Fields (Required to dispatch)</div><div class="mapping-section-grid"></div>`;
+      const reqGrid = reqSection.querySelector('.mapping-section-grid');
+      requiredKeys.forEach(key => reqGrid.append(createFieldCard(key, labels[key], true)));
 
-    const optSection = element('div', undefined, 'mapping-section');
-    optSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill optional">2</span> ${wa ? 'Optional fields (Record ID, agency name)' : 'Optional Parameters (Name, Drive link, CC, BCC, Send Enabled)'}</div><div class="mapping-section-grid"></div>`;
-    const optGrid = optSection.querySelector('.mapping-section-grid');
-    optionalKeys.forEach(key => optGrid.append(createFieldCard(key, labels[key], false)));
-
-    const sections = [reqSection, optSection];
+      const optSection = element('div', undefined, 'mapping-section');
+      optSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill optional">2</span> Optional Parameters (Name, Drive link, CC, BCC, Send Enabled)</div><div class="mapping-section-grid"></div>`;
+      const optGrid = optSection.querySelector('.mapping-section-grid');
+      optionalKeys.forEach(key => optGrid.append(createFieldCard(key, labels[key], false)));
+      sections.push(reqSection, optSection);
+    }
     if (followKeys.length) {
       const followSection = element('div', undefined, 'mapping-section');
-      followSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill optional">3</span> Follow-up mails (subject and message for each step)</div><div class="mapping-section-grid"></div>`;
+      followSection.innerHTML = `<div class="mapping-section-title"><span class="section-pill optional">${wa ? '2' : '3'}</span> Follow-up mails (subject and message for each step)</div><div class="mapping-section-grid"></div>`;
       const followGrid = followSection.querySelector('.mapping-section-grid');
       followKeys.forEach(key => followGrid.append(createFieldCard(key, labels[key], false)));
       sections.push(followSection);
     }
     $('#sheet-mappings').append(...sections);
 
+    const form = $('#sheet-map-form');
+    if (form) form.classList.remove('is-awaiting-detect');
+    const mappingsWrap = $('#sheet-mappings');
+    if (mappingsWrap) mappingsWrap.hidden = false;
+    const nextHint = $('#mapping-next-hint');
+    if (nextHint) nextHint.hidden = true;
     const actionsBar = $('#mapping-actions');
     if (actionsBar) actionsBar.hidden = false;
     const saveBtn = $('#save-source');
@@ -705,6 +771,7 @@
     const data = await api(sheetApi(id));
     if (openedId !== Number(id)) return;
     source = data.source; records = data.records;
+    waSkippedIds = loadWaSkipped(id);
     if (!sameSource) {
       page = 0;
       sheetFilter = '';
@@ -980,15 +1047,23 @@
         for (const issue of row.issues) {
           statusWrap.append(element('span', issue, 'badge issue'));
         }
+      } else if (sheetMode() === 'whatsapp' && row.can_queue === true) {
+        const label = (row.send_status === 'sent' || row.send_status === 'failed') ? 'Ready again' : 'Not sent';
+        statusWrap.append(element('span', label, 'badge ready'));
       } else if (row.send_status === 'not_queued') {
         statusWrap.append(element('span', 'Not sent', 'badge ready'));
       } else if (sheetMode() === 'whatsapp' && ['pending', 'sent', 'failed'].includes(row.send_status)) {
         const nowa = row.send_status === 'failed' && isNoWaError(row);
+        const wave = Number(row.send_wave || 1);
         const label = row.send_status === 'failed'
           ? (nowa ? 'Not on WhatsApp' : 'Failed')
-          : ({pending: 'Waiting', sent: 'Sent'}[row.send_status]);
+          : (row.send_label || (row.send_status === 'pending'
+            ? (wave > 1 ? `Follow-up ${wave - 1} waiting` : 'Message waiting')
+            : (wave > 1 ? `Follow-up ${wave - 1} sent` : 'Message sent')));
         const badge = element('span', label, `badge ${nowa ? 'nowa' : row.send_status}`);
         if (row.send_status === 'failed' && (row.send_error || row.error)) badge.title = String(row.send_error || row.error);
+        else if (row.send_kind === 'follow_up') badge.title = `Latest delivery is follow-up ${Math.max(1, wave - 1)}`;
+        else if (row.send_status === 'sent') badge.title = 'Latest delivery is the first message';
         statusWrap.append(badge);
       } else {
         statusWrap.append(element('span', row.send_status.replaceAll('_',' '), `badge ${row.send_status}`));
@@ -1007,13 +1082,70 @@
         statusBtn.title = 'See what happened to this row';
         statusBtn.addEventListener('click', () => busy(statusBtn, () => waShowRow(row)));
         actions.append(statusBtn);
+
+        const skipped = isRowSkipped(row.record_id);
+        const skipBtn = element('button', skipped ? 'Include' : 'Skip', skipped ? 'sheet-btn-action wa-btn-include' : 'sheet-btn-action wa-btn-skip');
+        skipBtn.title = skipped ? 'Include this row in bulk send' : 'Skip this row from bulk send';
+        skipBtn.addEventListener('click', () => {
+          const idStr = String(row.record_id);
+          if (waSkippedIds.has(idStr)) {
+            waSkippedIds.delete(idStr);
+          } else {
+            waSkippedIds.add(idStr);
+            selectedIds.delete(idStr);
+          }
+          saveWaSkipped(source?.id, waSkippedIds);
+          renderRows();
+          updateBatchBar();
+        });
+        actions.append(skipBtn);
+
         const idCell = element('td', String(row.record_id || '—'), 'cell-wa-id');
         const nameCell = element('td', String(row.values.name || '—'), 'cell-wa-name');
         nameCell.title = String(row.values.name || '');
         const phoneCell = element('td', String(row.values.phone || '—'), 'cell-wa-phone');
         const messageCell = element('td', String(row.values.message || '—'), 'cell-wa-message');
         messageCell.title = String(row.values.message || '');
-        tr.append(chkCell, idCell, nameCell, phoneCell, messageCell, status, actions);
+
+        const deviceCell = element('td', undefined, 'cell-wa-device');
+        const sendStatus = row.send_status || 'not_queued';
+        if (sendStatus === 'not_queued') {
+          if (row.sticky_device_name) {
+            const badge = element('span', row.sticky_device_name, 'badge-wa-device badge-wa-sticky');
+            badge.title = `Sticky owner: locked to ${row.sticky_device_name}`;
+            deviceCell.append(badge);
+          } else {
+            const badge = element('span', 'Free pick', 'badge-wa-device badge-wa-freepick');
+            badge.title = 'First-time number: assigned among ready phones at queue time';
+            deviceCell.append(badge);
+          }
+        } else {
+          const assigned = row.send_device_name || 'Assigned';
+          if (row.device_same === true) {
+            const badge = element('span', `${assigned} · same`, 'badge-wa-device badge-wa-same');
+            badge.title = 'Sent from original sticky phone';
+            deviceCell.append(badge);
+          } else if (row.device_same === false) {
+            const badge = element('span', `${assigned} · changed`, 'badge-wa-device badge-wa-changed');
+            badge.title = 'Device differed from previous sticky owner';
+            deviceCell.append(badge);
+          } else {
+            const badge = element('span', assigned, 'badge-wa-device');
+            badge.title = `Assigned phone: ${assigned}`;
+            deviceCell.append(badge);
+          }
+        }
+
+        if (skipped) {
+          tr.classList.add('wa-row-skipped');
+          const chk = chkCell.querySelector('input');
+          if (chk) {
+            chk.disabled = true;
+            chk.checked = false;
+          }
+        }
+
+        tr.append(chkCell, idCell, nameCell, phoneCell, messageCell, deviceCell, status, actions);
         $('#sheet-rows').append(tr);
         continue;
       }
@@ -1054,7 +1186,7 @@
 
     if (!filtered.length) {
       const row = element('tr'); const td = cell(records.length ? 'No records match your filters.' : 'No records below the header row.');
-      td.colSpan = 7; td.style.textAlign = 'center'; row.append(td); $('#sheet-rows').append(row);
+      td.colSpan = sheetMode() === 'whatsapp' ? 8 : 7; td.style.textAlign = 'center'; row.append(td); $('#sheet-rows').append(row);
     }
     $('#sheet-page').textContent = `Page ${page + 1} of ${pages}`;
     $('#sheet-range').textContent = `${filtered.length ? page * size + 1 : 0}–${Math.min((page + 1) * size,filtered.length)} of ${filtered.length} records`;
@@ -1469,7 +1601,7 @@
     const pct = planned ? Math.round((today.sent / planned) * 100) : 0;
     const maxDay = Math.max(1, ...(today.days || []).map((day) => day.count));
     const callouts = [];
-    if (today.paused) callouts.push(['warn', 'Sending is paused. Nothing goes out until you press Resume. Queued messages stay in the queue.']);
+    if (today.paused) callouts.push(['warn', 'Sending is paused for this sheet. Nothing from this sheet goes out until you press Resume. Other sheets keep their own pause state.']);
     if (today.held) callouts.push(['danger', `${today.held} number${today.held === 1 ? ' is' : 's are'} held and will not be sent. Their format has no country code the phone service can read, so a message could reach the wrong person. Fix ${today.held === 1 ? 'it' : 'them'} in the sheet.`]);
     if (today.overdue) callouts.push(['warn', `${today.overdue} message${today.overdue === 1 ? ' is' : 's are'} late. Sending runs only while this page is open and the phone is connected, so keep it open.`]);
     if (today.retrying) callouts.push(['info', `${today.retrying} message${today.retrying === 1 ? ' is' : 's are'} trying again because the phone service did not answer.`]);
@@ -1528,10 +1660,13 @@
     const dialog = waDialog();
     const cancel = $('#wa-send-cancel');
     const ok = $('#wa-send-ok');
+    const sheetId = source?.id ? Number(source.id) : null;
     const paint = async () => {
-      const today = await api('whatsapp/sheets/today');
+      // Opened from a sheet → only that sheet's queue. No open sheet → every sheet.
+      const today = await api(sheetId ? sheetApi(`${sheetId}/today`) : 'whatsapp/sheets/today');
       const day = new Date(`${today.date}T00:00:00`).toLocaleDateString('en-IN', {weekday: 'short', day: '2-digit', month: 'short'});
-      $('#wa-send-title').textContent = 'Sending status';
+      const sheetName = String(today.sheet || source?.title || '').trim();
+      $('#wa-send-title').textContent = sheetName ? `Sending status · ${sheetName}` : 'Sending status';
       $('#wa-send-sub').textContent = `${day} · ${today.sent} sent today, ${today.left} still to go today, ${today.later} on later days.`;
       $('#wa-send-body').innerHTML = waTodayBody(today);
       $('#wa-send-note').textContent = 'This updates by itself every 10 seconds.';
@@ -1541,13 +1676,17 @@
       const pause = $('#wa-send-pause');
       pause.hidden = false;
       pause.disabled = false;
-      pause.textContent = today.paused ? 'Resume sending' : 'Pause sending';
+      pause.textContent = today.paused ? 'Resume this sheet' : 'Pause this sheet';
       pause.onclick = async () => {
+        if (!sheetId) {
+          notice('Open a sheet before pausing or resuming.', true);
+          return;
+        }
         const next = !today.paused;
         pause.disabled = true;
         try {
-          await post('whatsapp/sheets/pause', {paused: next});
-          notice(next ? 'Sending paused. Queued messages stay in the queue.' : 'Sending resumed.');
+          await post(sheetApi(`${sheetId}/pause`), {paused: next});
+          notice(next ? 'This sheet is paused. Its queued messages stay waiting.' : 'This sheet resumed. Other sheets stay as they were.');
           if (!next) startWaPump(true);
           await paint();
         } catch (error) {
@@ -1566,7 +1705,8 @@
     cancel.onclick = async () => {
       cancel.disabled = true;
       try {
-        const result = await post('whatsapp/sheets/retry-failed');
+        const payload = sheetId ? {source_id: sheetId} : {};
+        const result = await post('whatsapp/sheets/retry-failed', payload);
         notice(result.queued ? `${result.queued} failed message${result.queued === 1 ? ' is' : 's are'} back in the queue.` : 'No failed messages to retry.');
         startWaPump(true);
         await paint();
@@ -1592,9 +1732,13 @@
     const name = String(row.values?.name || '').trim() || 'Row';
     $('#wa-send-title').textContent = `${info.label} · ${name}`;
     $('#wa-send-sub').textContent = `Record ${row.record_id || '—'}`;
+    const stickyPhone = info.sticky_phone || row.sticky_device_name;
+    const willSend = (!info.from) ? (row.sticky_device_name || (row.send_status === 'not_queued' ? 'Free pick' : '')) : '';
     const facts = [
-      ['Phone', info.phone],
+      ['Phone', info.phone || row.values?.phone],
       ['Sent from', info.from],
+      ['Sticky phone', stickyPhone],
+      ['Will send from', willSend],
       ['Queued', info.queued_at ? waWhen(info.queued_at) : ''],
       ['Scheduled for', info.due_at ? waWhen(info.due_at) : ''],
       ['Sent at', info.sent_at ? waWhen(info.sent_at) : ''],
@@ -1618,8 +1762,15 @@
 
   async function waConfirmSend(recordIds = null) {
     if (!source?.id) return;
+    if (!recordIds) {
+      if (waSkippedIds.size > 0) {
+        recordIds = (records || []).filter(isNotSent).map(r => r.record_id);
+      }
+    } else {
+      recordIds = recordIds.filter(id => !isRowSkipped(id));
+    }
     if (recordIds && !recordIds.length) {
-      notice('Select at least one row first.', true);
+      notice('Select at least one row first (skipped rows are excluded).', true);
       return;
     }
     if (!chosenPhoneIds().length) {
@@ -1658,11 +1809,16 @@
       ok.textContent = 'Scheduling…';
       try {
         const queued = await post(sheetApi(`${sourceId}/queue`), scope);
-        notice(`${queued.queued} rows are waiting to send from ${queued.phones.length} ${queued.phones.length === 1 ? 'phone' : 'phones'}.`);
+        const phoneWord = queued.phones.length === 1 ? 'phone' : 'phones';
+        notice(
+          queued.resumed
+            ? `${queued.queued} rows are waiting to send from ${queued.phones.length} ${phoneWord}. This sheet was paused, so it was resumed.`
+            : `${queued.queued} rows are waiting to send from ${queued.phones.length} ${phoneWord}.`
+        );
         if (recordIds) selectedIds.clear();
         await openSource(sourceId, true);
         startWaPump(true);
-        await waShowProgress(sourceId);
+        await waShowToday();
       } catch (error) {
         dialog.close();
         notice(error.message, true);
@@ -1692,7 +1848,7 @@
     if (sheetMode() === 'whatsapp') {
       const button = event.currentTarget;
       if (!(records || []).some(isNotSent) && (records || []).some((row) => isPendingRow(row) || waWasSent(row))) {
-        busy(button, () => waShowProgress(source.id));
+        busy(button, waShowToday);
         return;
       }
       busy(button, waConfirmSend);
@@ -1735,7 +1891,7 @@
   $('#refresh-sheet').addEventListener('click', event => busy(event.currentTarget, () => openSource(source.id, true)));
   $('#sheet-download')?.addEventListener('click', event => busy(event.currentTarget, async () => {
     if (!source?.id) return;
-    const response = await fetch('/api/sheets/' + source.id + '/download', { credentials: 'same-origin' });
+    const response = await fetch('/api/' + sheetApi(`${source.id}/download`), { credentials: 'same-origin' });
     if (!response.ok) {
       let message = 'Could not download this sheet.';
       try { message = (await response.json()).error || message; } catch (e) {}
@@ -1768,11 +1924,13 @@
     busy($('#sheet-replace'), async () => {
       const form = new FormData();
       form.append('file', file);
-      const response = await fetch('/api/sheets/' + source.id + '/replace', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: form });
+      const response = await fetch('/api/' + sheetApi(`${source.id}/replace`), { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: form });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Could not update this sheet.');
       await openSource(source.id, true);
-      notice('File updated on this sheet. Sent mail is unchanged. Open Column mapping to map the follow-up columns.');
+      notice(sheetMode() === 'whatsapp'
+        ? 'File updated on this sheet. Already queued or sent WhatsApp messages stay as they were. Open Column mapping if the columns changed.'
+        : 'File updated on this sheet. Sent mail is unchanged. Open Column mapping to map the follow-up columns.');
     });
   });
 

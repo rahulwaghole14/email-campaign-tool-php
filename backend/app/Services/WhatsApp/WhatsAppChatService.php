@@ -48,11 +48,16 @@ final class WhatsAppChatService
             if ($body === '' || $at === '') continue;
             $external = trim((string) ($message['id'] ?? ''));
             $status = strtolower(trim((string) ($message['status'] ?? '')));
+            $msgDevId = trim((string) ($message['device_id'] ?? '')) ?: $deviceId;
+            $msgDevName = trim((string) ($message['device_name'] ?? ''));
+            if ($msgDevName === '' && $msgDevId !== '') {
+                $msgDevName = $msgDevId === $deviceId ? $deviceName : $this->deviceNameById($msgDevId);
+            }
             $existing = $this->knownMessage($id, $direction, $body, $at, $external);
             if ($existing !== 0) {
                 $this->db->prepare(
-                    'UPDATE whatsapp_chat_messages SET status = COALESCE(NULLIF(?, \'\'), status), device_id = COALESCE(device_id, NULLIF(?, \'\')), device_name = COALESCE(device_name, NULLIF(?, \'\')) WHERE id = ?'
-                )->execute([$status, $deviceId, $deviceName, $existing]);
+                    'UPDATE whatsapp_chat_messages SET status = COALESCE(NULLIF(?, \'\'), status), device_id = COALESCE(NULLIF(?, \'\'), device_id), device_name = COALESCE(NULLIF(?, \'\'), device_name) WHERE id = ?'
+                )->execute([$status, $msgDevId, $msgDevName, $existing]);
                 continue;
             }
             $this->db->prepare(
@@ -62,14 +67,20 @@ final class WhatsAppChatService
                 $direction,
                 $body,
                 $at,
-                $deviceId !== '' ? $deviceId : null,
-                $deviceName !== '' ? $deviceName : null,
+                $msgDevId !== '' ? $msgDevId : null,
+                $msgDevName !== '' ? $msgDevName : null,
                 $external !== '' ? $external : null,
                 $status !== '' ? $status : null,
             ]);
         }
-        $last = $this->db->prepare('SELECT body, created_at FROM whatsapp_chat_messages WHERE chat_id = ? ORDER BY created_at DESC, id DESC LIMIT 1');
-        $last->execute([$id]);
+        $chatDevId = (string) $this->db->query("SELECT device_id FROM whatsapp_chats WHERE id = $id")->fetchColumn();
+        if ($chatDevId !== '') {
+            $last = $this->db->prepare('SELECT body, created_at FROM whatsapp_chat_messages WHERE chat_id = ? AND (device_id = ? OR device_id IS NULL OR device_id = \'\') ORDER BY created_at DESC, id DESC LIMIT 1');
+            $last->execute([$id, $chatDevId]);
+        } else {
+            $last = $this->db->prepare('SELECT body, created_at FROM whatsapp_chat_messages WHERE chat_id = ? ORDER BY created_at DESC, id DESC LIMIT 1');
+            $last->execute([$id]);
+        }
         $row = $last->fetch();
         if (is_array($row)) {
             $this->db->prepare('UPDATE whatsapp_chats SET last_message = ?, last_at = ? WHERE id = ?')->execute([(string) $row['body'], (string) $row['created_at'], $id]);
@@ -199,11 +210,28 @@ final class WhatsAppChatService
         $chats = [];
         foreach ($local['chats'] as $chat) {
             $digits = $this->digits((string) ($chat['phone'] ?? ''));
-            $match = $index[$digits] ?? null;
+            $chatDev = trim((string) ($chat['device_id'] ?? ''));
+            $match = null;
+            if ($chatDev !== '') {
+                foreach ($live as $row) {
+                    if (!is_array($row)) continue;
+                    $rowDev = trim((string) ($row['device_id'] ?? $row['device_uuid'] ?? ''));
+                    if ($rowDev !== '' && $rowDev === $chatDev && $this->sameDigits($digits, $this->digits((string) ($row['phone'] ?? '')))) {
+                        $match = $row;
+                        break;
+                    }
+                }
+            }
             if ($match === null) {
-                foreach ($index as $key => $row) {
-                    // Digit-only array keys are read back as integers by PHP, so they are cast to string first.
-                    if ($this->sameDigits($digits, (string) $key)) { $match = $row; break; }
+                foreach ($live as $row) {
+                    if (!is_array($row)) continue;
+                    $rowDev = trim((string) ($row['device_id'] ?? $row['device_uuid'] ?? ''));
+                    if ($this->sameDigits($digits, $this->digits((string) ($row['phone'] ?? '')))) {
+                        if ($chatDev === '' || $rowDev === '' || $rowDev === $chatDev) {
+                            $match = $row;
+                            break;
+                        }
+                    }
                 }
             }
             if (is_array($match)) {
@@ -220,12 +248,21 @@ final class WhatsAppChatService
                 } else {
                     $chat['name'] = $kept;
                 }
-                $chat['unread_count'] = (int) ($match['unread_count'] ?? 0);
-                $since = strtotime($this->firstSent((string) $chat['phone']));
-                $liveAt = strtotime((string) ($match['last_at'] ?? ''));
-                if ($since && $liveAt && $liveAt >= $since - 2) {
-                    $chat['last_message'] = (string) ($match['last_message'] ?? $chat['last_message']);
-                    $chat['last_at'] = (string) ($match['last_at'] ?? $chat['last_at']);
+                $matchDev = trim((string) ($match['device_id'] ?? $match['device_uuid'] ?? ''));
+                $matchDevName = trim((string) ($match['device_name'] ?? ''));
+                $chatSenderName = trim((string) ($chat['senders'][0]['name'] ?? ''));
+                $devMatches = ($chatDev === '' || $matchDev === '' || $matchDev === $chatDev);
+                if ($chatSenderName !== '' && $matchDevName !== '' && strcasecmp($chatSenderName, $matchDevName) !== 0) {
+                    $devMatches = false;
+                }
+                if ($devMatches) {
+                    $chat['unread_count'] = (int) ($match['unread_count'] ?? 0);
+                    $since = strtotime($this->firstSent((string) $chat['phone'], $chatDev));
+                    $liveAt = strtotime((string) ($match['last_at'] ?? ''));
+                    if ($since && $liveAt && $liveAt >= $since - 2) {
+                        $chat['last_message'] = (string) ($match['last_message'] ?? $chat['last_message']);
+                        $chat['last_at'] = (string) ($match['last_at'] ?? $chat['last_at']);
+                    }
                 }
             }
             $chats[] = $chat;
@@ -685,6 +722,15 @@ final class WhatsAppChatService
             break;
         }
         return $sender;
+    }
+
+    private function deviceNameById(string $deviceId): string
+    {
+        if ($deviceId === '') return '';
+        $stmt = $this->db->prepare('SELECT name FROM whatsapp_devices WHERE device_id = ? OR id = ? LIMIT 1');
+        $stmt->execute([$deviceId, $deviceId]);
+        $name = (string) ($stmt->fetchColumn() ?: '');
+        return $name;
     }
 
     private function addColumn(string $name, string $definition): void

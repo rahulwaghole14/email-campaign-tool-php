@@ -56,6 +56,10 @@ final class WhatsAppSheetService
 
     public function delete(int $id): void
     {
+        // Removing the sheet must stop its queue. Waiting rows used to keep sending after delete.
+        $this->db->prepare(
+            "UPDATE whatsapp_sends SET status = 'cancelled', error = ? WHERE source_id = ? AND status IN ('waiting', 'sending')"
+        )->execute(['Sheet removed', $id]);
         $this->db->prepare('DELETE FROM whatsapp_sheet_sources WHERE id = ?')->execute([$id]);
     }
 
@@ -205,6 +209,75 @@ final class WhatsAppSheetService
         }
         unset($row);
         return $rows;
+    }
+
+    /** CSV export of the sheet rows plus the latest WhatsApp send status. */
+    public function download(int $sourceId, array $statusByRecord = []): array
+    {
+        $preview = $this->preview($sourceId);
+        $source = $preview['source'];
+        $data = $this->sheets->inspect($source['spreadsheet_id'], (int) $source['sheet_id'], (int) $source['header_row']);
+        $byRow = [];
+        foreach ($preview['records'] as $record) {
+            $info = $statusByRecord[(string) $record['record_id']] ?? null;
+            $status = is_array($info) ? (string) ($info['status'] ?? 'not_queued') : (string) ($record['send_status'] ?? 'not_queued');
+            $error = is_array($info) ? (string) ($info['error'] ?? '') : (string) ($record['send_error'] ?? '');
+            $wave = is_array($info) ? (int) ($info['wave'] ?? 1) : (int) ($record['send_wave'] ?? 1);
+            $byRow[(int) $record['row']][] = self::statusLabel($status, $error, $wave);
+        }
+        $headers = $data['headers'];
+        $statusIndex = null;
+        foreach ($headers as $index => $header) {
+            $name = strtolower(trim((string) $header));
+            if (in_array($name, ['status', 'delivery status', 'whatsapp status', 'send status'], true)) {
+                $statusIndex = $index;
+                break;
+            }
+        }
+        if ($statusIndex === null) $headers[] = 'Status';
+        $headerRow = (int) $source['header_row'];
+        $lines = [self::csvLine($headers)];
+        foreach ($data['values'] as $offset => $cells) {
+            $rowNumber = $headerRow + $offset + 1;
+            $cells = array_map(static fn ($value) => (string) $value, $cells);
+            $status = isset($byRow[$rowNumber]) ? implode(', ', array_values(array_unique($byRow[$rowNumber]))) : '';
+            if ($statusIndex === null) $cells[] = $status;
+            else $cells[$statusIndex] = $status;
+            $width = count($headers);
+            $cells = array_pad(array_slice($cells, 0, $width), $width, '');
+            $lines[] = self::csvLine($cells);
+        }
+        $title = trim((string) ($data['tab']['title'] ?? $source['title'] ?? 'sheet'));
+        $safe = trim((string) preg_replace('/[^A-Za-z0-9._-]+/', '-', $title), '-');
+        if ($safe === '') $safe = 'sheet';
+        return ['filename' => $safe . '-status.csv', 'body' => "\xEF\xBB\xBF" . implode("\r\n", $lines) . "\r\n"];
+    }
+
+    private static function statusLabel(string $status, string $error = '', int $wave = 1): string
+    {
+        if ($status === 'failed' && preg_match('/not registered on whatsapp/i', $error)) return 'Not on WhatsApp';
+        $wave = max(1, $wave);
+        $name = $wave > 1 ? ('Follow-up ' . ($wave - 1)) : 'Message';
+        return match ($status) {
+            'sent' => $name . ' sent',
+            'pending', 'waiting', 'sending' => $name . ' waiting',
+            'failed', 'blocked' => 'Failed',
+            'held' => 'Held',
+            'cancelled' => 'Cancelled',
+            default => 'Not sent',
+        };
+    }
+
+    /** @param list<mixed> $cells */
+    private static function csvLine(array $cells): string
+    {
+        $escaped = [];
+        foreach ($cells as $cell) {
+            $value = (string) $cell;
+            if (preg_match('/^[=+\-@]/', $value)) $value = "'" . $value;
+            $escaped[] = '"' . str_replace('"', '""', $value) . '"';
+        }
+        return implode(',', $escaped);
     }
 
     public function edit(int $sourceId, array $input): void

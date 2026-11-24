@@ -69,6 +69,7 @@ put PlatformSettings.php
 put WhatsAppChatService.php
 put WhatsAppInbox.php
 put WhatsAppOverviewService.php
+put WhatsAppQueue.php
 put WhatsAppSentService.php
 put WhatsAppTables.php
 
@@ -81,6 +82,11 @@ put GoogleClient.php
 cd /backend/app/Support
 lcd "$workspaceRoot\backend\app\Support"
 put Database.php
+
+# --- Maintenance Scripts ---
+cd /backend/scripts
+lcd "$workspaceRoot\backend\scripts"
+put purge_linkedin_emails.php
 
 # --- Backend Public ---
 cd /backend/public

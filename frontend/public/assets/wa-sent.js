@@ -242,15 +242,12 @@
     const status = String(row.status || '');
     const planned = status === 'waiting' || status === 'sending' || status === 'held';
     const when = formatWhen(row.shown_at || row.due_at || row.created_at);
-    const kind = planned
-      ? 'Scheduled'
-      : (status === 'failed' || status === 'blocked'
-        ? (isNotOnWhatsApp(row.error) ? 'Not on WhatsApp' : 'Attempted')
-        : 'Sent');
+    const title = planned ? 'Scheduled time' : 'Sent time';
     return `
-      <div class="wa-sent-when-main">${escapeHtml(when.label)}</div>
-      <div class="wa-sent-when-time muted">${escapeHtml(when.time)}</div>
-      <div class="wa-sent-when-kind muted">${escapeHtml(kind)}</div>
+      <div class="wa-sent-when" title="${escapeHtml(title)}">
+        <span class="wa-sent-when-main">${escapeHtml(when.label)}</span>
+        <span class="wa-sent-when-time">${escapeHtml(when.time)}</span>
+      </div>
     `;
   }
 
@@ -390,7 +387,7 @@
       const params = new URLSearchParams({ page: String(page), page_size: String(size), search, status });
       if (phone?.value) {
         params.set('device', phone.value);
-        params.set('device_name', phone.selectedOptions[0]?.textContent || '');
+        params.set('device_name', phone.selectedOptions[0]?.dataset?.name || phone.selectedOptions[0]?.textContent || '');
       }
       const { from, to } = getDateParams();
       if (from) params.set('from', from);
@@ -420,22 +417,38 @@
 
   let phonesReady = false;
 
+  function formatFilterPhone(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    const local = digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+    if (local.length === 10) return '+91 ' + local.slice(0, 5) + ' ' + local.slice(5);
+    return digits ? '+' + digits : '';
+  }
+
+  function deviceFilterLabel(device) {
+    const name = String(device.name || 'Phone').trim() || 'Phone';
+    const phone = formatFilterPhone(device.phone);
+    const state = device.active ? 'Active' : 'Inactive';
+    return phone ? `${name} · ${phone} · ${state}` : `${name} · ${state}`;
+  }
+
   async function fillPhones() {
-    if (phonesReady) return;
     const select = document.getElementById('wa-sent-phone');
     if (!select) return;
     const current = select.value;
     try {
-      const data = await api('whatsapp/device');
+      // Live slots, blocked, and history senders (deleted slots still filterable).
+      const data = await api('whatsapp/device/filters');
       select.replaceChildren();
       const all = document.createElement('option');
       all.value = '';
-      all.textContent = 'All Linked Devices';
+      const total = (data.devices || []).length;
+      all.textContent = total ? `All devices (${total})` : 'All devices';
       select.append(all);
       (data.devices || []).forEach((device) => {
         const option = document.createElement('option');
         option.value = device.id || '';
-        option.textContent = device.name ? `${device.name} (Active)` : 'Phone';
+        option.dataset.name = device.name || 'Phone';
+        option.textContent = deviceFilterLabel(device);
         select.append(option);
       });
       select.value = [...select.options].some((option) => option.value === current) ? current : '';

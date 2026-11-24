@@ -144,10 +144,13 @@ final class WhatsAppOverviewService
 
         $limitPerDevice = $this->dailyLimitPerDevice();
         $deviceQuotas = [];
+        $readyDeviceCount = 0;
         foreach ($devices as $dev) {
             $dId = (string) ($dev['id'] ?? '');
             $dName = (string) ($dev['name'] ?? '');
             $dStatus = (string) ($dev['status'] ?? 'ready');
+            $isReady = in_array($dStatus, ['ready', 'connected'], true);
+            if ($isReady) $readyDeviceCount++;
             $sentCount = $todaySentPerDevice[$dId] ?? ($todaySentPerName[strtolower($dName)] ?? 0);
             $deviceQuotas[] = [
                 'id' => $dId,
@@ -155,13 +158,13 @@ final class WhatsAppOverviewService
                 'status' => $dStatus,
                 'phone' => (string) ($dev['phone'] ?? ''),
                 'sent_today' => $sentCount,
-                'limit' => $limitPerDevice,
+                'limit' => $isReady ? $limitPerDevice : 0,
             ];
         }
 
         $selectedSent = $todaySentTotal;
-        $deviceCount = max(1, count($devices));
-        $selectedLimit = $deviceCount * $limitPerDevice;
+        // Only ready/connected phones add to today's dispatch capacity.
+        $selectedLimit = $readyDeviceCount * $limitPerDevice;
         if ($deviceId !== '') {
             $matchedQuota = null;
             foreach ($deviceQuotas as $dq) {
@@ -171,7 +174,8 @@ final class WhatsAppOverviewService
                 }
             }
             $selectedSent = $matchedQuota ? $matchedQuota['sent_today'] : 0;
-            $selectedLimit = $limitPerDevice;
+            $ready = $matchedQuota && in_array((string) ($matchedQuota['status'] ?? ''), ['ready', 'connected'], true);
+            $selectedLimit = $ready ? $limitPerDevice : 0;
         }
 
         $activeSheet = null;

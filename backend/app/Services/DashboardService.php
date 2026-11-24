@@ -357,7 +357,7 @@ final class DashboardService
 
     private static function isLinkedInSender(string $email): bool
     {
-        return str_contains(strtolower($email), 'linkedin.com');
+        return ImapClient::isLinkedInSender($email);
     }
 
     private static function isNoiseSender(string $email, string $name): bool

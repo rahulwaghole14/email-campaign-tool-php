@@ -11,4 +11,5 @@
 !/backend/storage/**/.gitkeep
 *.log
 /backend/public/migrate.php
+.vscode/
 

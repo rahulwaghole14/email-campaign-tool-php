@@ -66,6 +66,18 @@ check($db->query("SELECT status FROM whatsapp_sends WHERE id = $nowa")->fetchCol
 check($queue->retryFailed() === 0, 'nothing is left to retry');
 check($queue->today()['failed'] === 0 && $queue->today()['no_whatsapp'] === 1, 'no failed rows are listed any more');
 
+// Sheet filter: another sheet's waiting rows must not appear in this sheet's Sending status.
+// After retry, sheet 1 still has W1, W2, LATE, and re-queued F1 due today (4), plus LATER.
+$db->exec("INSERT INTO whatsapp_sheet_sources (id, spreadsheet_id, sheet_id, title, header_row, mapping, created_at, delay_minutes, daily_limit) VALUES (2, 'y', 2, 'Sticky test', 1, '{}', '2026-01-01T00:00:00+00:00', 3, 20)");
+$add('waiting', $iso($now + 30), 2, 'OTHER', $iso($now + 30));
+$sheetToday = $queue->today(1);
+check($sheetToday['source_id'] === 1 && $sheetToday['sheet'] === 'Spain agencies', 'filtered panel names the sheet');
+check($sheetToday['left'] === 4, 'sheet filter keeps only this sheet\'s due-today rows, got ' . $sheetToday['left']);
+check($sheetToday['later'] === 1, 'sheet filter keeps only this sheet\'s later rows');
+$otherToday = $queue->today(2);
+check($otherToday['left'] === 1 && $otherToday['sheet'] === 'Sticky test', 'the other sheet sees only its own waiting row');
+check($queue->today()['left'] === 5, 'unfiltered today still counts every sheet');
+
 // Upcoming days: today holds the overdue and due-today rows, and later days are counted one by one.
 $daysByDate = [];
 foreach ($today['days'] as $d) $daysByDate[$d['date']] = $d['count'];
@@ -74,7 +86,7 @@ check(($daysByDate[$today['date']] ?? 0) === 3 + $today['sent'], 'today counts i
 check(array_sum($daysByDate) === $today['left'] + $today['later'] + $today['sent'], 'every waiting and sent row is counted on its day');
 check(count($today['days']) === 2 && $today['days'][0]['date'] === $today['date'], 'days are listed in order, starting today');
 $rowA = $queue->rowStatus(1, 'S1');
-check($rowA['label'] === 'Sent' && $rowA['sent_at'] !== null, 'a sent row shows Sent and when');
+check($rowA['label'] === 'Message sent' && $rowA['sent_at'] !== null, 'a sent row shows Message sent and when');
 $rowW = $queue->rowStatus(1, 'W2');
 check($rowW['label'] === 'Retrying' && $rowW['attempts'] === 2 && str_contains($rowW['detail'], 'Try 3 of 5'), 'a retrying row shows the next try number');
 $rowF = $queue->rowStatus(1, 'NOWA');
